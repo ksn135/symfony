@@ -11,66 +11,82 @@
 
 namespace Symfony\Component\Form\Tests\Extension\Core\DataTransformer;
 
-use Symfony\Component\Form\Extension\Core\ChoiceList\SimpleChoiceList;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Form\ChoiceList\ArrayChoiceList;
+use Symfony\Component\Form\Exception\TransformationFailedException;
 use Symfony\Component\Form\Extension\Core\DataTransformer\ChoiceToValueTransformer;
 
-class ChoiceToValueTransformerTest extends \PHPUnit_Framework_TestCase
+class ChoiceToValueTransformerTest extends TestCase
 {
-    protected $transformer;
+    protected ChoiceToValueTransformer $transformer;
+    protected ChoiceToValueTransformer $transformerWithNull;
 
-    protected function setUp()
+    protected function setUp(): void
     {
-        $list = new SimpleChoiceList(array('' => 'A', 0 => 'B', 1 => 'C'));
+        $list = new ArrayChoiceList(['', false, 'X', true]);
+        $listWithNull = new ArrayChoiceList(['', false, 'X', null]);
+
         $this->transformer = new ChoiceToValueTransformer($list);
+        $this->transformerWithNull = new ChoiceToValueTransformer($listWithNull);
     }
 
-    protected function tearDown()
+    public static function transformProvider(): array
     {
-        $this->transformer = null;
-    }
-
-    public function transformProvider()
-    {
-        return array(
+        return [
             // more extensive test set can be found in FormUtilTest
-            array(0, '0'),
-            array(false, '0'),
-            array('', ''),
-        );
+            ['', '', '', '0'],
+            [false, '0', false, '1'],
+            ['X', 'X', 'X', '2'],
+            [true, '1', null, '3'],
+        ];
     }
 
     /**
      * @dataProvider transformProvider
      */
-    public function testTransform($in, $out)
+    public function testTransform($in, $out, $inWithNull, $outWithNull)
     {
         $this->assertSame($out, $this->transformer->transform($in));
+        $this->assertSame($outWithNull, $this->transformerWithNull->transform($inWithNull));
     }
 
-    public function reverseTransformProvider()
+    public static function reverseTransformProvider()
     {
-        return array(
+        return [
             // values are expected to be valid choice keys already and stay
             // the same
-            array('0', 0),
-            array('', null),
-            array(null, null),
-        );
+            ['', '', '0', ''],
+            ['0', false, '1', false],
+            ['X', 'X', '2', 'X'],
+            ['1', true, '3', null],
+        ];
     }
 
     /**
      * @dataProvider reverseTransformProvider
      */
-    public function testReverseTransform($in, $out)
+    public function testReverseTransform($in, $out, $inWithNull, $outWithNull)
     {
         $this->assertSame($out, $this->transformer->reverseTransform($in));
+        $this->assertSame($outWithNull, $this->transformerWithNull->reverseTransform($inWithNull));
+    }
+
+    public static function reverseTransformExpectsStringOrNullProvider()
+    {
+        return [
+            [0],
+            [true],
+            [false],
+            [[]],
+        ];
     }
 
     /**
-     * @expectedException \Symfony\Component\Form\Exception\TransformationFailedException
+     * @dataProvider reverseTransformExpectsStringOrNullProvider
      */
-    public function testReverseTransformExpectsScalar()
+    public function testReverseTransformExpectsStringOrNull($value)
     {
-        $this->transformer->reverseTransform(array());
+        $this->expectException(TransformationFailedException::class);
+        $this->transformer->reverseTransform($value);
     }
 }

@@ -1,21 +1,17 @@
-### Arguments:
+### Arguments
 
-**argument_name:**
+#### `argument_name`
 
-* Name: argument_name
 * Is required: yes
 * Is array: no
-* Description: <none>
 * Default: `NULL`
 
-### Options:
+### Options
 
-**option_name:**
+#### `--option_name|-o`
 
-* Name: `--option_name`
-* Shortcut: `-o`
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: <none>
+* Is negatable: no
 * Default: `false`

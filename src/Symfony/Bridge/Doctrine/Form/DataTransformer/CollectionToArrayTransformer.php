@@ -11,34 +11,32 @@
 
 namespace Symfony\Bridge\Doctrine\Form\DataTransformer;
 
-use Symfony\Component\Form\Exception\TransformationFailedException;
-use Symfony\Component\Form\DataTransformerInterface;
-use Doctrine\Common\Collections\Collection;
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
+use Symfony\Component\Form\DataTransformerInterface;
+use Symfony\Component\Form\Exception\TransformationFailedException;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
+ *
+ * @implements DataTransformerInterface<Collection, array>
  */
 class CollectionToArrayTransformer implements DataTransformerInterface
 {
     /**
      * Transforms a collection into an array.
      *
-     * @param Collection $collection A collection of entities
-     *
-     * @return mixed An array of entities
-     *
      * @throws TransformationFailedException
      */
-    public function transform($collection)
+    public function transform(mixed $collection): mixed
     {
         if (null === $collection) {
-            return array();
+            return [];
         }
 
         // For cases when the collection getter returns $collection->toArray()
         // in order to prevent modifications of the returned collection
-        if (is_array($collection)) {
+        if (\is_array($collection)) {
             return $collection;
         }
 
@@ -50,16 +48,12 @@ class CollectionToArrayTransformer implements DataTransformerInterface
     }
 
     /**
-     * Transforms choice keys into entities.
-     *
-     * @param mixed $array An array of entities
-     *
-     * @return Collection   A collection of entities
+     * Transforms an array into a collection.
      */
-    public function reverseTransform($array)
+    public function reverseTransform(mixed $array): Collection
     {
         if ('' === $array || null === $array) {
-            $array = array();
+            $array = [];
         } else {
             $array = (array) $array;
         }

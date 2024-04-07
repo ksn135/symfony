@@ -11,43 +11,63 @@
 
 namespace Symfony\Bridge\Doctrine;
 
-use Symfony\Component\DependencyInjection\ContainerAwareInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-use Doctrine\Common\Persistence\AbstractManagerRegistry;
+use Doctrine\Persistence\AbstractManagerRegistry;
+use ProxyManager\Proxy\GhostObjectInterface;
+use ProxyManager\Proxy\LazyLoadingInterface;
+use Symfony\Component\DependencyInjection\Container;
+use Symfony\Component\VarExporter\LazyObjectInterface;
 
 /**
  * References Doctrine connections and entity/document managers.
  *
- * @author  Lukas Kahwe Smith <smith@pooteeweet.org>
+ * @author Lukas Kahwe Smith <smith@pooteeweet.org>
  */
-abstract class ManagerRegistry extends AbstractManagerRegistry implements ContainerAwareInterface
+abstract class ManagerRegistry extends AbstractManagerRegistry
 {
-    /**
-     * @var ContainerInterface
-     */
-    protected $container;
+    protected Container $container;
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function getService($name)
+    protected function getService($name): object
     {
         return $this->container->get($name);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function resetService($name)
+    protected function resetService($name): void
     {
-        $this->container->set($name, null);
-    }
+        if (!$this->container->initialized($name)) {
+            return;
+        }
+        $manager = $this->container->get($name);
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setContainer(ContainerInterface $container = null)
-    {
-        $this->container = $container;
+        if ($manager instanceof LazyObjectInterface) {
+            if (!$manager->resetLazyObject()) {
+                throw new \LogicException(sprintf('Resetting a non-lazy manager service is not supported. Declare the "%s" service as lazy.', $name));
+            }
+
+            return;
+        }
+        if (!$manager instanceof LazyLoadingInterface) {
+            throw new \LogicException(sprintf('Resetting a non-lazy manager service is not supported. Declare the "%s" service as lazy.', $name));
+        }
+        if ($manager instanceof GhostObjectInterface) {
+            throw new \LogicException('Resetting a lazy-ghost-object manager service is not supported.');
+        }
+        $manager->setProxyInitializer(\Closure::bind(
+            function (&$wrappedInstance, LazyLoadingInterface $manager) use ($name) {
+                if (isset($this->aliases[$name])) {
+                    $name = $this->aliases[$name];
+                }
+                if (isset($this->fileMap[$name])) {
+                    $wrappedInstance = $this->load($this->fileMap[$name], false);
+                } else {
+                    $wrappedInstance = $this->{$this->methodMap[$name]}(false);
+                }
+
+                $manager->setProxyInitializer(null);
+
+                return true;
+            },
+            $this->container,
+            Container::class
+        ));
     }
 }

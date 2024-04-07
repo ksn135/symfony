@@ -1,11 +1,21 @@
 {
     "definitions": {
-        "definition_2": {
+        ".definition_2": {
             "class": "Full\\Qualified\\Class2",
-            "scope": "container",
             "public": false,
             "synthetic": true,
+            "lazy": false,
+            "shared": true,
+            "abstract": false,
+            "autowire": false,
+            "autoconfigure": false,
+            "deprecated": false,
             "file": "\/path\/to\/file",
+            "factory_service": "factory.service",
+            "factory_method": "get",
+            "calls": [
+                "setMailer"
+            ],
             "tags": [
                 {
                     "name": "tag1",
@@ -22,17 +32,30 @@
                 },
                 {
                     "name": "tag2",
-                    "parameters": [
-
-                    ]
+                    "parameters": []
+                },
+                {
+                    "name": "tag3",
+                    "parameters": {
+                        "array_attr": [
+                            "foo",
+                            "bar",
+                            [
+                                [
+                                    [
+                                        [
+                                            "ccc"
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    }
                 }
-            ]
+            ],
+            "usages": []
         }
     },
-    "aliases": [
-
-    ],
-    "services": [
-
-    ]
+    "aliases": [],
+    "services": []
 }

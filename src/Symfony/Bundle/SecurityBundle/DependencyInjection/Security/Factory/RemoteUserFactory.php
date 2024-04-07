@@ -12,9 +12,7 @@
 namespace Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory;
 
 use Symfony\Component\Config\Definition\Builder\NodeDefinition;
-
-use Symfony\Component\DependencyInjection\DefinitionDecorator;
-
+use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
 
@@ -23,37 +21,37 @@ use Symfony\Component\DependencyInjection\Reference;
  *
  * @author Fabien Potencier <fabien@symfony.com>
  * @author Maxime Douailin <maxime.douailin@gmail.com>
+ *
+ * @internal
  */
-class RemoteUserFactory implements SecurityFactoryInterface
+class RemoteUserFactory implements AuthenticatorFactoryInterface
 {
-    public function create(ContainerBuilder $container, $id, $config, $userProvider, $defaultEntryPoint)
+    public const PRIORITY = -10;
+
+    public function createAuthenticator(ContainerBuilder $container, string $firewallName, array $config, string $userProviderId): string
     {
-        $providerId = 'security.authentication.provider.pre_authenticated.'.$id;
+        $authenticatorId = 'security.authenticator.remote_user.'.$firewallName;
         $container
-            ->setDefinition($providerId, new DefinitionDecorator('security.authentication.provider.pre_authenticated'))
-            ->replaceArgument(0, new Reference($userProvider))
-            ->addArgument($id)
+            ->setDefinition($authenticatorId, new ChildDefinition('security.authenticator.remote_user'))
+            ->replaceArgument(0, new Reference($userProviderId))
+            ->replaceArgument(2, $firewallName)
+            ->replaceArgument(3, $config['user'])
         ;
 
-        $listenerId = 'security.authentication.listener.remote_user.'.$id;
-        $listener = $container->setDefinition($listenerId, new DefinitionDecorator('security.authentication.listener.remote_user'));
-        $listener->replaceArgument(2, $id);
-        $listener->replaceArgument(3, $config['user']);
-
-        return array($providerId, $listenerId, $defaultEntryPoint);
+        return $authenticatorId;
     }
 
-    public function getPosition()
+    public function getPriority(): int
     {
-        return 'pre_auth';
+        return self::PRIORITY;
     }
 
-    public function getKey()
+    public function getKey(): string
     {
         return 'remote-user';
     }
 
-    public function addConfiguration(NodeDefinition $node)
+    public function addConfiguration(NodeDefinition $node): void
     {
         $node
             ->children()

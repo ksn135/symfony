@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is new3 of the Symfony package.
+ * This file is part of the Symfony package.
  *
  * (c) Fabien Potencier <fabien@symfony.com>
  *
@@ -11,25 +11,20 @@
 
 namespace Symfony\Component\PropertyAccess\Tests;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\PropertyAccess\PropertyPath;
 use Symfony\Component\PropertyAccess\PropertyPathBuilder;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class PropertyPathBuilderTest extends \PHPUnit_Framework_TestCase
+class PropertyPathBuilderTest extends TestCase
 {
-    /**
-     * @var string
-     */
-    const PREFIX = 'old1[old2].old3[old4][old5].old6';
+    private const PREFIX = 'old1[old2].old3[old4][old5].old6';
 
-    /**
-     * @var PropertyPathBuilder
-     */
-    private $builder;
+    private PropertyPathBuilder $builder;
 
-    protected function setUp()
+    protected function setUp(): void
     {
         $this->builder = new PropertyPathBuilder(new PropertyPath(self::PREFIX));
     }
@@ -118,19 +113,15 @@ class PropertyPathBuilderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($path, $this->builder->getPropertyPath());
     }
 
-    /**
-     * @expectedException \OutOfBoundsException
-     */
     public function testReplaceByIndexDoesNotAllowInvalidOffsets()
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->replaceByIndex(6, 'new1');
     }
 
-    /**
-     * @expectedException \OutOfBoundsException
-     */
     public function testReplaceByIndexDoesNotAllowNegativeOffsets()
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->replaceByIndex(-1, 'new1');
     }
 
@@ -152,19 +143,15 @@ class PropertyPathBuilderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($path, $this->builder->getPropertyPath());
     }
 
-    /**
-     * @expectedException \OutOfBoundsException
-     */
     public function testReplaceByPropertyDoesNotAllowInvalidOffsets()
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->replaceByProperty(6, 'new1');
     }
 
-    /**
-     * @expectedException \OutOfBoundsException
-     */
     public function testReplaceByPropertyDoesNotAllowNegativeOffsets()
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->replaceByProperty(-1, 'new1');
     }
 
@@ -197,19 +184,19 @@ class PropertyPathBuilderTest extends \PHPUnit_Framework_TestCase
 
     /**
      * @dataProvider provideInvalidOffsets
-     * @expectedException \OutOfBoundsException
      */
-    public function testReplaceDoesNotAllowInvalidOffsets($offset)
+    public function testReplaceDoesNotAllowInvalidOffsets(int $offset)
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->replace($offset, 1, new PropertyPath('new1[new2].new3'));
     }
 
-    public function provideInvalidOffsets()
+    public static function provideInvalidOffsets()
     {
-        return array(
-            array(6),
-            array(-7),
-        );
+        return [
+            [6],
+            [-7],
+        ];
     }
 
     public function testReplaceWithLengthGreaterOne()
@@ -252,6 +239,17 @@ class PropertyPathBuilderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($path, $builder->getPropertyPath());
     }
 
+    public function testReplaceWithLongerPathKeepsOrder()
+    {
+        $path = new PropertyPath('new1.new2.new3');
+        $expected = new PropertyPath('new1.new2.new3.old2');
+
+        $builder = new PropertyPathBuilder(new PropertyPath('old1.old2'));
+        $builder->replace(0, 1, $path);
+
+        $this->assertEquals($expected, $builder->getPropertyPath());
+    }
+
     public function testRemove()
     {
         $this->builder->remove(3);
@@ -261,19 +259,36 @@ class PropertyPathBuilderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($path, $this->builder->getPropertyPath());
     }
 
-    /**
-     * @expectedException \OutOfBoundsException
-     */
     public function testRemoveDoesNotAllowInvalidOffsets()
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->remove(6);
     }
 
-    /**
-     * @expectedException \OutOfBoundsException
-     */
     public function testRemoveDoesNotAllowNegativeOffsets()
     {
+        $this->expectException(\OutOfBoundsException::class);
         $this->builder->remove(-1);
+    }
+
+    public function testRemoveAndAppendAtTheEnd()
+    {
+        $this->builder->remove($this->builder->getLength() - 1);
+
+        $path = new PropertyPath('old1[old2].old3[old4][old5]');
+
+        $this->assertEquals($path, $this->builder->getPropertyPath());
+
+        $this->builder->appendProperty('old7');
+
+        $path = new PropertyPath('old1[old2].old3[old4][old5].old7');
+
+        $this->assertEquals($path, $this->builder->getPropertyPath());
+
+        $this->builder->remove($this->builder->getLength() - 1);
+
+        $path = new PropertyPath('old1[old2].old3[old4][old5]');
+
+        $this->assertEquals($path, $this->builder->getPropertyPath());
     }
 }

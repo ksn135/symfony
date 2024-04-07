@@ -12,75 +12,185 @@
 namespace Symfony\Component\Form\Extension\Core\Type;
 
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\Extension\Core\View\ChoiceView;
+use Symfony\Component\Form\ChoiceList\ChoiceListInterface;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceAttr;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceFieldName;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceFilter;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceLabel;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceLoader;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceTranslationParameters;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\ChoiceValue;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\GroupBy;
+use Symfony\Component\Form\ChoiceList\Factory\Cache\PreferredChoice;
+use Symfony\Component\Form\ChoiceList\Factory\CachingFactoryDecorator;
+use Symfony\Component\Form\ChoiceList\Factory\ChoiceListFactoryInterface;
+use Symfony\Component\Form\ChoiceList\Factory\DefaultChoiceListFactory;
+use Symfony\Component\Form\ChoiceList\Factory\PropertyAccessDecorator;
+use Symfony\Component\Form\ChoiceList\Loader\ChoiceLoaderInterface;
+use Symfony\Component\Form\ChoiceList\View\ChoiceGroupView;
+use Symfony\Component\Form\ChoiceList\View\ChoiceListView;
+use Symfony\Component\Form\ChoiceList\View\ChoiceView;
+use Symfony\Component\Form\Event\PreSubmitEvent;
+use Symfony\Component\Form\Exception\TransformationFailedException;
+use Symfony\Component\Form\Extension\Core\DataMapper\CheckboxListMapper;
+use Symfony\Component\Form\Extension\Core\DataMapper\RadioListMapper;
+use Symfony\Component\Form\Extension\Core\DataTransformer\ChoicesToValuesTransformer;
+use Symfony\Component\Form\Extension\Core\DataTransformer\ChoiceToValueTransformer;
+use Symfony\Component\Form\Extension\Core\EventListener\MergeCollectionListener;
 use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\FormError;
+use Symfony\Component\Form\FormEvent;
+use Symfony\Component\Form\FormEvents;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Form\FormView;
-use Symfony\Component\Form\Exception\LogicException;
-use Symfony\Component\Form\Extension\Core\ChoiceList\SimpleChoiceList;
-use Symfony\Component\Form\Extension\Core\EventListener\FixRadioInputListener;
-use Symfony\Component\Form\Extension\Core\EventListener\FixCheckboxInputListener;
-use Symfony\Component\Form\Extension\Core\EventListener\MergeCollectionListener;
-use Symfony\Component\Form\Extension\Core\DataTransformer\ChoiceToValueTransformer;
-use Symfony\Component\Form\Extension\Core\DataTransformer\ChoiceToBooleanArrayTransformer;
-use Symfony\Component\Form\Extension\Core\DataTransformer\ChoicesToValuesTransformer;
-use Symfony\Component\Form\Extension\Core\DataTransformer\ChoicesToBooleanArrayTransformer;
 use Symfony\Component\OptionsResolver\Options;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\PropertyAccess\PropertyPath;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 class ChoiceType extends AbstractType
 {
-    /**
-     * Caches created choice lists.
-     * @var array
-     */
-    private $choiceListCache = array();
+    private ChoiceListFactoryInterface $choiceListFactory;
+    private ?TranslatorInterface $translator;
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function __construct(?ChoiceListFactoryInterface $choiceListFactory = null, ?TranslatorInterface $translator = null)
     {
-        if (!$options['choice_list'] && !is_array($options['choices']) && !$options['choices'] instanceof \Traversable) {
-            throw new LogicException('Either the option "choices" or "choice_list" must be set.');
-        }
+        $this->choiceListFactory = $choiceListFactory ?? new CachingFactoryDecorator(
+            new PropertyAccessDecorator(
+                new DefaultChoiceListFactory()
+            )
+        );
+        $this->translator = $translator;
+    }
+
+    public function buildForm(FormBuilderInterface $builder, array $options): void
+    {
+        $unknownValues = [];
+        $choiceList = $this->createChoiceList($options);
+        $builder->setAttribute('choice_list', $choiceList);
 
         if ($options['expanded']) {
+            $builder->setDataMapper($options['multiple'] ? new CheckboxListMapper() : new RadioListMapper());
+
             // Initialize all choices before doing the index check below.
             // This helps in cases where index checks are optimized for non
             // initialized choice lists. For example, when using an SQL driver,
             // the index check would read in one SQL query and the initialization
             // requires another SQL query. When the initialization is done first,
             // one SQL query is sufficient.
-            $preferredViews = $options['choice_list']->getPreferredViews();
-            $remainingViews = $options['choice_list']->getRemainingViews();
+
+            $choiceListView = $this->createChoiceListView($choiceList, $options);
+            $builder->setAttribute('choice_list_view', $choiceListView);
 
             // Check if the choices already contain the empty value
-            // Only add the empty value option if this is not the case
-            if (null !== $options['placeholder'] && 0 === count($options['choice_list']->getChoicesForValues(array('')))) {
-                $placeholderView = new ChoiceView(null, '', $options['placeholder']);
+            // Only add the placeholder option if this is not the case
+            if (null !== $options['placeholder'] && 0 === \count($choiceList->getChoicesForValues(['']))) {
+                $placeholderView = new ChoiceView(null, '', $options['placeholder'], $options['placeholder_attr']);
 
-                // "placeholder" is a reserved index
-                // see also ChoiceListInterface::getIndicesForChoices()
-                $this->addSubForms($builder, array('placeholder' => $placeholderView), $options);
+                // "placeholder" is a reserved name
+                $this->addSubForm($builder, 'placeholder', $placeholderView, $options);
             }
 
-            $this->addSubForms($builder, $preferredViews, $options);
-            $this->addSubForms($builder, $remainingViews, $options);
+            $this->addSubForms($builder, $choiceListView->preferredChoices, $options);
+            $this->addSubForms($builder, $choiceListView->choices, $options);
+        }
 
-            if ($options['multiple']) {
-                $builder->addViewTransformer(new ChoicesToBooleanArrayTransformer($options['choice_list']));
-                $builder->addEventSubscriber(new FixCheckboxInputListener($options['choice_list']), 10);
-            } else {
-                $builder->addViewTransformer(new ChoiceToBooleanArrayTransformer($options['choice_list'], $builder->has('placeholder')));
-                $builder->addEventSubscriber(new FixRadioInputListener($options['choice_list'], $builder->has('placeholder')), 10);
-            }
+        if ($options['expanded'] || $options['multiple']) {
+            // Make sure that scalar, submitted values are converted to arrays
+            // which can be submitted to the checkboxes/radio buttons
+            $builder->addEventListener(FormEvents::PRE_SUBMIT, static function (FormEvent $event) use ($choiceList, $options, &$unknownValues) {
+                /** @var PreSubmitEvent $event */
+                $form = $event->getForm();
+                $data = $event->getData();
+
+                // Since the type always use mapper an empty array will not be
+                // considered as empty in Form::submit(), we need to evaluate
+                // empty data here so its value is submitted to sub forms
+                if (null === $data) {
+                    $emptyData = $form->getConfig()->getEmptyData();
+                    $data = $emptyData instanceof \Closure ? $emptyData($form, $data) : $emptyData;
+                }
+
+                // Convert the submitted data to a string, if scalar, before
+                // casting it to an array
+                if (!\is_array($data)) {
+                    if ($options['multiple']) {
+                        throw new TransformationFailedException('Expected an array.');
+                    }
+
+                    $data = (array) (string) $data;
+                }
+
+                // A map from submitted values to integers
+                $valueMap = array_flip($data);
+
+                // Make a copy of the value map to determine whether any unknown
+                // values were submitted
+                $unknownValues = $valueMap;
+
+                // Reconstruct the data as mapping from child names to values
+                $knownValues = [];
+
+                if ($options['expanded']) {
+                    /** @var FormInterface $child */
+                    foreach ($form as $child) {
+                        $value = $child->getConfig()->getOption('value');
+
+                        // Add the value to $data with the child's name as key
+                        if (isset($valueMap[$value])) {
+                            $knownValues[$child->getName()] = $value;
+                            unset($unknownValues[$value]);
+                            continue;
+                        } else {
+                            $knownValues[$child->getName()] = null;
+                        }
+                    }
+                } else {
+                    foreach ($choiceList->getChoicesForValues($data) as $key => $choice) {
+                        $knownValues[] = $data[$key];
+                        unset($unknownValues[$data[$key]]);
+                    }
+                }
+
+                // The empty value is always known, independent of whether a
+                // field exists for it or not
+                unset($unknownValues['']);
+
+                // Throw exception if unknown values were submitted (multiple choices will be handled in a different event listener below)
+                if (\count($unknownValues) > 0 && !$options['multiple']) {
+                    throw new TransformationFailedException(sprintf('The choices "%s" do not exist in the choice list.', implode('", "', array_keys($unknownValues))));
+                }
+
+                $event->setData($knownValues);
+            });
+        }
+
+        if ($options['multiple']) {
+            $messageTemplate = $options['invalid_message'] ?? 'The value {{ value }} is not valid.';
+            $translator = $this->translator;
+
+            $builder->addEventListener(FormEvents::POST_SUBMIT, static function (FormEvent $event) use (&$unknownValues, $messageTemplate, $translator) {
+                // Throw exception if unknown values were submitted
+                if (\count($unknownValues) > 0) {
+                    $form = $event->getForm();
+
+                    $clientDataAsString = \is_scalar($form->getViewData()) ? (string) $form->getViewData() : (\is_array($form->getViewData()) ? implode('", "', array_keys($unknownValues)) : \gettype($form->getViewData()));
+
+                    if ($translator) {
+                        $message = $translator->trans($messageTemplate, ['{{ value }}' => $clientDataAsString], 'validators');
+                    } else {
+                        $message = strtr($messageTemplate, ['{{ value }}' => $clientDataAsString]);
+                    }
+
+                    $form->addError(new FormError($message, $messageTemplate, ['{{ value }}' => $clientDataAsString], null, new TransformationFailedException(sprintf('The choices "%s" do not exist in the choice list.', $clientDataAsString))));
+                }
+            });
+
+            // <select> tag with "multiple" option or list of checkbox inputs
+            $builder->addViewTransformer(new ChoicesToValuesTransformer($choiceList));
         } else {
-            if ($options['multiple']) {
-                $builder->addViewTransformer(new ChoicesToValuesTransformer($options['choice_list']));
-            } else {
-                $builder->addViewTransformer(new ChoiceToValueTransformer($options['choice_list']));
-            }
+            // <select> tag without "multiple" option or list of radio inputs
+            $builder->addViewTransformer(new ChoiceToValueTransformer($choiceList));
         }
 
         if ($options['multiple'] && $options['by_reference']) {
@@ -88,60 +198,80 @@ class ChoiceType extends AbstractType
             // transformation is merged back into the original collection
             $builder->addEventSubscriber(new MergeCollectionListener(true, true));
         }
+
+        // To avoid issues when the submitted choices are arrays (i.e. array to string conversions),
+        // we have to ensure that all elements of the submitted choice data are NULL, strings or ints.
+        $builder->addEventListener(FormEvents::PRE_SUBMIT, static function (FormEvent $event) {
+            $data = $event->getData();
+
+            if (!\is_array($data)) {
+                return;
+            }
+
+            foreach ($data as $v) {
+                if (null !== $v && !\is_string($v) && !\is_int($v)) {
+                    throw new TransformationFailedException('All choices submitted must be NULL, strings or ints.');
+                }
+            }
+        }, 256);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildView(FormView $view, FormInterface $form, array $options)
+    public function buildView(FormView $view, FormInterface $form, array $options): void
     {
-        $view->vars = array_replace($view->vars, array(
+        $choiceTranslationDomain = $options['choice_translation_domain'];
+        if ($view->parent && null === $choiceTranslationDomain) {
+            $choiceTranslationDomain = $view->vars['translation_domain'];
+        }
+
+        /** @var ChoiceListInterface $choiceList */
+        $choiceList = $form->getConfig()->getAttribute('choice_list');
+
+        /** @var ChoiceListView $choiceListView */
+        $choiceListView = $form->getConfig()->hasAttribute('choice_list_view')
+            ? $form->getConfig()->getAttribute('choice_list_view')
+            : $this->createChoiceListView($choiceList, $options);
+
+        $view->vars = array_replace($view->vars, [
             'multiple' => $options['multiple'],
             'expanded' => $options['expanded'],
-            'preferred_choices' => $options['choice_list']->getPreferredViews(),
-            'choices' => $options['choice_list']->getRemainingViews(),
-            'separator' => '-------------------',
+            'preferred_choices' => $choiceListView->preferredChoices,
+            'choices' => $choiceListView->choices,
+            'separator' => $options['separator'],
+            'separator_html' => $options['separator_html'],
             'placeholder' => null,
-        ));
+            'placeholder_attr' => [],
+            'choice_translation_domain' => $choiceTranslationDomain,
+            'choice_translation_parameters' => $options['choice_translation_parameters'],
+        ]);
 
         // The decision, whether a choice is selected, is potentially done
         // thousand of times during the rendering of a template. Provide a
         // closure here that is optimized for the value of the form, to
         // avoid making the type check inside the closure.
         if ($options['multiple']) {
-            $view->vars['is_selected'] = function ($choice, array $values) {
-                return false !== array_search($choice, $values, true);
-            };
+            $view->vars['is_selected'] = static fn ($choice, array $values) => \in_array($choice, $values, true);
         } else {
-            $view->vars['is_selected'] = function ($choice, $value) {
-                return $choice === $value;
-            };
+            $view->vars['is_selected'] = static fn ($choice, $value) => $choice === $value;
         }
 
         // Check if the choices already contain the empty value
-        $view->vars['placeholder_in_choices'] = 0 !== count($options['choice_list']->getChoicesForValues(array('')));
+        $view->vars['placeholder_in_choices'] = $choiceListView->hasPlaceholder();
 
         // Only add the empty value option if this is not the case
         if (null !== $options['placeholder'] && !$view->vars['placeholder_in_choices']) {
             $view->vars['placeholder'] = $options['placeholder'];
+            $view->vars['placeholder_attr'] = $options['placeholder_attr'];
         }
-
-        // BC
-        $view->vars['empty_value'] = $view->vars['placeholder'];
-        $view->vars['empty_value_in_choices'] = $view->vars['placeholder_in_choices'];
 
         if ($options['multiple'] && !$options['expanded']) {
             // Add "[]" to the name in case a select tag with multiple options is
             // displayed. Otherwise only one of the selected options is sent in the
             // POST request.
-            $view->vars['full_name'] = $view->vars['full_name'].'[]';
+            $view->vars['full_name'] .= '[]';
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function finishView(FormView $view, FormInterface $form, array $options)
+    public function finishView(FormView $view, FormInterface $form, array $options): void
     {
         if ($options['expanded']) {
             // Radio buttons should have the same name as the parent
@@ -158,51 +288,32 @@ class ChoiceType extends AbstractType
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        $choiceListCache = & $this->choiceListCache;
-
-        $choiceList = function (Options $options) use (&$choiceListCache) {
-            // Harden against NULL values (like in EntityType and ModelType)
-            $choices = null !== $options['choices'] ? $options['choices'] : array();
-
-            // Reuse existing choice lists in order to increase performance
-            $hash = hash('sha256', serialize(array($choices, $options['preferred_choices'])));
-
-            if (!isset($choiceListCache[$hash])) {
-                $choiceListCache[$hash] = new SimpleChoiceList($choices, $options['preferred_choices']);
+        $emptyData = static function (Options $options) {
+            if ($options['expanded'] && !$options['multiple']) {
+                return null;
             }
 
-            return $choiceListCache[$hash];
-        };
-
-        $emptyData = function (Options $options) {
-            if ($options['multiple'] || $options['expanded']) {
-                return array();
+            if ($options['multiple']) {
+                return [];
             }
 
             return '';
         };
 
-        $emptyValue = function (Options $options) {
-            return $options['required'] ? null : '';
-        };
+        $placeholderDefault = static fn (Options $options) => $options['required'] ? null : '';
 
-        // for BC with the "empty_value" option
-        $placeholder = function (Options $options) {
-            return $options['empty_value'];
-        };
-
-        $placeholderNormalizer = function (Options $options, $placeholder) {
+        $placeholderNormalizer = static function (Options $options, $placeholder) {
             if ($options['multiple']) {
                 // never use an empty value for this case
-                return;
+                return null;
+            } elseif ($options['required'] && ($options['expanded'] || isset($options['attr']['size']) && $options['attr']['size'] > 1)) {
+                // placeholder for required radio buttons or a select with size > 1 does not make sense
+                return null;
             } elseif (false === $placeholder) {
                 // an empty value should be added but the user decided otherwise
-                return;
+                return null;
             } elseif ($options['expanded'] && '' === $placeholder) {
                 // never use an empty label for radio buttons
                 return 'None';
@@ -212,77 +323,147 @@ class ChoiceType extends AbstractType
             return $placeholder;
         };
 
-        $compound = function (Options $options) {
-            return $options['expanded'];
+        $compound = static fn (Options $options) => $options['expanded'];
+
+        $choiceTranslationDomainNormalizer = static function (Options $options, $choiceTranslationDomain) {
+            if (true === $choiceTranslationDomain) {
+                return $options['translation_domain'];
+            }
+
+            return $choiceTranslationDomain;
         };
 
-        $resolver->setDefaults(array(
+        $resolver->setDefaults([
             'multiple' => false,
             'expanded' => false,
-            'choice_list' => $choiceList,
-            'choices' => array(),
-            'preferred_choices' => array(),
+            'choices' => [],
+            'choice_filter' => null,
+            'choice_loader' => null,
+            'choice_label' => null,
+            'choice_name' => null,
+            'choice_value' => null,
+            'choice_attr' => null,
+            'choice_translation_parameters' => [],
+            'preferred_choices' => [],
+            'separator' => '-------------------',
+            'separator_html' => false,
+            'duplicate_preferred_choices' => true,
+            'group_by' => null,
             'empty_data' => $emptyData,
-            'empty_value' => $emptyValue, // deprecated
-            'placeholder' => $placeholder,
+            'placeholder' => $placeholderDefault,
+            'placeholder_attr' => [],
             'error_bubbling' => false,
             'compound' => $compound,
-            // The view data is always a string, even if the "data" option
-            // is manually set to an object.
+            // The view data is always a string or an array of strings,
+            // even if the "data" option is manually set to an object.
             // See https://github.com/symfony/symfony/pull/5582
             'data_class' => null,
-        ));
+            'choice_translation_domain' => true,
+            'trim' => false,
+            'invalid_message' => 'The selected choice is invalid.',
+        ]);
 
-        $resolver->setNormalizers(array(
-            'empty_value' => $placeholderNormalizer,
-            'placeholder' => $placeholderNormalizer,
-        ));
+        $resolver->setNormalizer('placeholder', $placeholderNormalizer);
+        $resolver->setNormalizer('choice_translation_domain', $choiceTranslationDomainNormalizer);
 
-        $resolver->setAllowedTypes(array(
-            'choice_list' => array('null', 'Symfony\Component\Form\Extension\Core\ChoiceList\ChoiceListInterface'),
-        ));
+        $resolver->setAllowedTypes('choices', ['null', 'array', \Traversable::class]);
+        $resolver->setAllowedTypes('choice_translation_domain', ['null', 'bool', 'string']);
+        $resolver->setAllowedTypes('choice_loader', ['null', ChoiceLoaderInterface::class, ChoiceLoader::class]);
+        $resolver->setAllowedTypes('choice_filter', ['null', 'callable', 'string', PropertyPath::class, ChoiceFilter::class]);
+        $resolver->setAllowedTypes('choice_label', ['null', 'bool', 'callable', 'string', PropertyPath::class, ChoiceLabel::class]);
+        $resolver->setAllowedTypes('choice_name', ['null', 'callable', 'string', PropertyPath::class, ChoiceFieldName::class]);
+        $resolver->setAllowedTypes('choice_value', ['null', 'callable', 'string', PropertyPath::class, ChoiceValue::class]);
+        $resolver->setAllowedTypes('choice_attr', ['null', 'array', 'callable', 'string', PropertyPath::class, ChoiceAttr::class]);
+        $resolver->setAllowedTypes('choice_translation_parameters', ['null', 'array', 'callable', ChoiceTranslationParameters::class]);
+        $resolver->setAllowedTypes('placeholder_attr', ['array']);
+        $resolver->setAllowedTypes('preferred_choices', ['array', \Traversable::class, 'callable', 'string', PropertyPath::class, PreferredChoice::class]);
+        $resolver->setAllowedTypes('separator', ['string']);
+        $resolver->setAllowedTypes('separator_html', ['bool']);
+        $resolver->setAllowedTypes('duplicate_preferred_choices', 'bool');
+        $resolver->setAllowedTypes('group_by', ['null', 'callable', 'string', PropertyPath::class, GroupBy::class]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getBlockPrefix(): string
     {
         return 'choice';
     }
 
     /**
      * Adds the sub fields for an expanded choice field.
-     *
-     * @param FormBuilderInterface $builder     The form builder.
-     * @param array                $choiceViews The choice view objects.
-     * @param array                $options     The build options.
      */
-    private function addSubForms(FormBuilderInterface $builder, array $choiceViews, array $options)
+    private function addSubForms(FormBuilderInterface $builder, array $choiceViews, array $options): void
     {
-        foreach ($choiceViews as $i => $choiceView) {
-            if (is_array($choiceView)) {
-                // Flatten groups
+        foreach ($choiceViews as $name => $choiceView) {
+            // Flatten groups
+            if (\is_array($choiceView)) {
                 $this->addSubForms($builder, $choiceView, $options);
-            } else {
-                $choiceOpts = array(
-                    'value' => $choiceView->value,
-                    'label' => $choiceView->label,
-                    'translation_domain' => $options['translation_domain'],
-                    'block_name' => 'entry',
-                );
-
-                if ($options['multiple']) {
-                    $choiceType = 'checkbox';
-                    // The user can check 0 or more checkboxes. If required
-                    // is true, he is required to check all of them.
-                    $choiceOpts['required'] = false;
-                } else {
-                    $choiceType = 'radio';
-                }
-
-                $builder->add($i, $choiceType, $choiceOpts);
+                continue;
             }
+
+            if ($choiceView instanceof ChoiceGroupView) {
+                $this->addSubForms($builder, $choiceView->choices, $options);
+                continue;
+            }
+
+            $this->addSubForm($builder, $name, $choiceView, $options);
         }
+    }
+
+    private function addSubForm(FormBuilderInterface $builder, string $name, ChoiceView $choiceView, array $options): void
+    {
+        $choiceOpts = [
+            'value' => $choiceView->value,
+            'label' => $choiceView->label,
+            'label_html' => $options['label_html'],
+            'attr' => $choiceView->attr,
+            'label_translation_parameters' => $choiceView->labelTranslationParameters,
+            'translation_domain' => $options['choice_translation_domain'],
+            'block_name' => 'entry',
+        ];
+
+        if ($options['multiple']) {
+            $choiceType = CheckboxType::class;
+            // The user can check 0 or more checkboxes. If required
+            // is true, they are required to check all of them.
+            $choiceOpts['required'] = false;
+        } else {
+            $choiceType = RadioType::class;
+        }
+
+        $builder->add($name, $choiceType, $choiceOpts);
+    }
+
+    private function createChoiceList(array $options): ChoiceListInterface
+    {
+        if (null !== $options['choice_loader']) {
+            return $this->choiceListFactory->createListFromLoader(
+                $options['choice_loader'],
+                $options['choice_value'],
+                $options['choice_filter']
+            );
+        }
+
+        // Harden against NULL values (like in EntityType and ModelType)
+        $choices = $options['choices'] ?? [];
+
+        return $this->choiceListFactory->createListFromChoices(
+            $choices,
+            $options['choice_value'],
+            $options['choice_filter']
+        );
+    }
+
+    private function createChoiceListView(ChoiceListInterface $choiceList, array $options): ChoiceListView
+    {
+        return $this->choiceListFactory->createView(
+            $choiceList,
+            $options['preferred_choices'],
+            $options['choice_label'],
+            $options['choice_name'],
+            $options['group_by'],
+            $options['choice_attr'],
+            $options['choice_translation_parameters'],
+            $options['duplicate_preferred_choices'],
+        );
     }
 }

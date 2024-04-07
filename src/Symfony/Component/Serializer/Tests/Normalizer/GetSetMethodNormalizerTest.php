@@ -11,25 +11,76 @@
 
 namespace Symfony\Component\Serializer\Tests\Normalizer;
 
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
+use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Symfony\Component\Serializer\Attribute\DiscriminatorMap;
+use Symfony\Component\Serializer\Exception\LogicException;
+use Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
+use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
+use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\NameConverter\CamelCaseToSnakeCaseNameConverter;
+use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
+use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\GetSetMethodNormalizer;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Serializer\SerializerInterface;
-use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Symfony\Component\Serializer\Tests\Fixtures\Attributes\ClassWithIgnoreAnnotation;
+use Symfony\Component\Serializer\Tests\Fixtures\Attributes\ClassWithIgnoreAttribute;
+use Symfony\Component\Serializer\Tests\Fixtures\Attributes\GroupDummy;
 use Symfony\Component\Serializer\Tests\Fixtures\CircularReferenceDummy;
 use Symfony\Component\Serializer\Tests\Fixtures\SiblingHolder;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\CacheableObjectAttributesTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\CallbacksTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\CircularReferenceTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\ConstructorArgumentsTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\FilterBoolTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\GroupsTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\IgnoredAttributesTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\MaxDepthTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\ObjectToPopulateTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\SkipUninitializedValuesTestTrait;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\TypedPropertiesObjectWithGetters;
+use Symfony\Component\Serializer\Tests\Normalizer\Features\TypeEnforcementTestTrait;
 
-class GetSetMethodNormalizerTest extends \PHPUnit_Framework_TestCase
+class GetSetMethodNormalizerTest extends TestCase
 {
-    /**
-     * @var GetSetMethodNormalizer
-     */
-    private $normalizer;
+    use CacheableObjectAttributesTestTrait;
+    use CallbacksTestTrait;
+    use CircularReferenceTestTrait;
+    use ConstructorArgumentsTestTrait;
+    use FilterBoolTestTrait;
+    use GroupsTestTrait;
+    use IgnoredAttributesTestTrait;
+    use MaxDepthTestTrait;
+    use ObjectToPopulateTestTrait;
+    use SkipUninitializedValuesTestTrait;
+    use TypeEnforcementTestTrait;
 
-    protected function setUp()
+    private GetSetMethodNormalizer $normalizer;
+    private SerializerInterface&NormalizerInterface&MockObject $serializer;
+
+    protected function setUp(): void
     {
-        $this->serializer = $this->getMock(__NAMESPACE__.'\SerializerNormalizer');
-        $this->normalizer = new GetSetMethodNormalizer();
+        $this->createNormalizer();
+    }
+
+    private function createNormalizer(array $defaultContext = []): void
+    {
+        $this->serializer = $this->createMock(SerializerNormalizer::class);
+        $this->normalizer = new GetSetMethodNormalizer(null, null, null, null, null, $defaultContext);
         $this->normalizer->setSerializer($this->serializer);
+    }
+
+    public function testInterface()
+    {
+        $this->assertInstanceOf(NormalizerInterface::class, $this->normalizer);
+        $this->assertInstanceOf(DenormalizerInterface::class, $this->normalizer);
     }
 
     public function testNormalize()
@@ -46,18 +97,18 @@ class GetSetMethodNormalizerTest extends \PHPUnit_Framework_TestCase
             ->expects($this->once())
             ->method('normalize')
             ->with($object, 'any')
-            ->will($this->returnValue('string_object'))
+            ->willReturn('string_object')
         ;
 
         $this->assertEquals(
-            array(
+            [
                 'foo' => 'foo',
                 'bar' => 'bar',
                 'baz' => true,
                 'fooBar' => 'foobar',
                 'camelCase' => 'camelcase',
                 'object' => 'string_object',
-            ),
+            ],
             $this->normalizer->normalize($obj, 'any')
         );
     }
@@ -65,13 +116,29 @@ class GetSetMethodNormalizerTest extends \PHPUnit_Framework_TestCase
     public function testDenormalize()
     {
         $obj = $this->normalizer->denormalize(
-            array('foo' => 'foo', 'bar' => 'bar', 'baz' => true, 'fooBar' => 'foobar'),
-            __NAMESPACE__.'\GetSetDummy',
+            ['foo' => 'foo', 'bar' => 'bar', 'baz' => true, 'fooBar' => 'foobar'],
+            GetSetDummy::class,
             'any'
         );
         $this->assertEquals('foo', $obj->getFoo());
         $this->assertEquals('bar', $obj->getBar());
         $this->assertTrue($obj->isBaz());
+    }
+
+    public function testIgnoredAttributesInContext()
+    {
+        $ignoredAttributes = ['foo', 'bar', 'baz', 'object'];
+        $obj = new GetSetDummy();
+        $obj->setFoo('foo');
+        $obj->setBar('bar');
+        $obj->setCamelCase(true);
+        $this->assertEquals(
+            [
+                'fooBar' => 'foobar',
+                'camelCase' => true,
+            ],
+            $this->normalizer->normalize($obj, 'any', [AbstractNormalizer::IGNORED_ATTRIBUTES => $ignoredAttributes])
+        );
     }
 
     public function testDenormalizeWithObject()
@@ -80,67 +147,69 @@ class GetSetMethodNormalizerTest extends \PHPUnit_Framework_TestCase
         $data->foo = 'foo';
         $data->bar = 'bar';
         $data->fooBar = 'foobar';
-        $obj = $this->normalizer->denormalize($data, __NAMESPACE__.'\GetSetDummy', 'any');
+        $obj = $this->normalizer->denormalize($data, GetSetDummy::class, 'any');
         $this->assertEquals('foo', $obj->getFoo());
         $this->assertEquals('bar', $obj->getBar());
     }
 
-    public function testDenormalizeOnCamelCaseFormat()
-    {
-        $this->normalizer->setCamelizedAttributes(array('camel_case'));
-        $obj = $this->normalizer->denormalize(
-            array('camel_case' => 'camelCase'),
-            __NAMESPACE__.'\GetSetDummy'
-        );
-        $this->assertEquals('camelCase', $obj->getCamelCase());
-    }
-
     public function testDenormalizeNull()
     {
-        $this->assertEquals(new GetSetDummy(), $this->normalizer->denormalize(null, __NAMESPACE__.'\GetSetDummy'));
-    }
-
-    /**
-     * @dataProvider attributeProvider
-     */
-    public function testFormatAttribute($attribute, $camelizedAttributes, $result)
-    {
-        $r = new \ReflectionObject($this->normalizer);
-        $m = $r->getMethod('formatAttribute');
-        $m->setAccessible(true);
-
-        $this->normalizer->setCamelizedAttributes($camelizedAttributes);
-        $this->assertEquals($m->invoke($this->normalizer, $attribute, $camelizedAttributes), $result);
-    }
-
-    public function attributeProvider()
-    {
-        return array(
-            array('attribute_test', array('attribute_test'),'AttributeTest'),
-            array('attribute_test', array('any'),'attribute_test'),
-            array('attribute', array('attribute'),'Attribute'),
-            array('attribute', array(), 'attribute'),
-        );
+        $this->assertEquals(new GetSetDummy(), $this->normalizer->denormalize(null, GetSetDummy::class));
     }
 
     public function testConstructorDenormalize()
     {
         $obj = $this->normalizer->denormalize(
-            array('foo' => 'foo', 'bar' => 'bar', 'baz' => true, 'fooBar' => 'foobar'),
-            __NAMESPACE__.'\GetConstructorDummy', 'any');
+            ['foo' => 'foo', 'bar' => 'bar', 'baz' => true, 'fooBar' => 'foobar'],
+            GetConstructorDummy::class, 'any');
         $this->assertEquals('foo', $obj->getFoo());
         $this->assertEquals('bar', $obj->getBar());
+        $this->assertTrue($obj->isBaz());
+    }
+
+    public function testConstructorDenormalizeWithNullArgument()
+    {
+        $obj = $this->normalizer->denormalize(
+            ['foo' => 'foo', 'bar' => null, 'baz' => true],
+            GetConstructorDummy::class, 'any');
+        $this->assertEquals('foo', $obj->getFoo());
+        $this->assertNull($obj->getBar());
         $this->assertTrue($obj->isBaz());
     }
 
     public function testConstructorDenormalizeWithMissingOptionalArgument()
     {
         $obj = $this->normalizer->denormalize(
-            array('foo' => 'test', 'baz' => array(1, 2, 3)),
-            __NAMESPACE__.'\GetConstructorOptionalArgsDummy', 'any');
+            ['foo' => 'test', 'baz' => [1, 2, 3]],
+            GetConstructorOptionalArgsDummy::class, 'any');
         $this->assertEquals('test', $obj->getFoo());
-        $this->assertEquals(array(), $obj->getBar());
-        $this->assertEquals(array(1, 2, 3), $obj->getBaz());
+        $this->assertEquals([], $obj->getBar());
+        $this->assertEquals([1, 2, 3], $obj->getBaz());
+    }
+
+    public function testConstructorDenormalizeWithOptionalDefaultArgument()
+    {
+        $obj = $this->normalizer->denormalize(
+            ['bar' => 'test'],
+            GetConstructorArgsWithDefaultValueDummy::class, 'any');
+        $this->assertEquals([], $obj->getFoo());
+        $this->assertEquals('test', $obj->getBar());
+    }
+
+    public function testConstructorDenormalizeWithVariadicArgument()
+    {
+        $obj = $this->normalizer->denormalize(
+            ['foo' => [1, 2, 3]],
+            'Symfony\Component\Serializer\Tests\Fixtures\VariadicConstructorArgsDummy', 'any');
+        $this->assertEquals([1, 2, 3], $obj->getFoo());
+    }
+
+    public function testConstructorDenormalizeWithMissingVariadicArgument()
+    {
+        $obj = $this->normalizer->denormalize(
+            [],
+            'Symfony\Component\Serializer\Tests\Fixtures\VariadicConstructorArgsDummy', 'any');
+        $this->assertEquals([], $obj->getFoo());
     }
 
     public function testConstructorWithObjectDenormalize()
@@ -150,172 +219,320 @@ class GetSetMethodNormalizerTest extends \PHPUnit_Framework_TestCase
         $data->bar = 'bar';
         $data->baz = true;
         $data->fooBar = 'foobar';
-        $obj = $this->normalizer->denormalize($data, __NAMESPACE__.'\GetConstructorDummy', 'any');
+        $obj = $this->normalizer->denormalize($data, GetConstructorDummy::class, 'any');
         $this->assertEquals('foo', $obj->getFoo());
         $this->assertEquals('bar', $obj->getBar());
     }
 
-    /**
-     * @dataProvider provideCallbacks
-     */
-    public function testCallbacks($callbacks, $value, $result, $message)
+    public function testConstructorWArgWithPrivateMutator()
     {
-        $this->normalizer->setCallbacks($callbacks);
+        $obj = $this->normalizer->denormalize(['foo' => 'bar'], ObjectConstructorArgsWithPrivateMutatorDummy::class, 'any');
+        $this->assertEquals('bar', $obj->getFoo());
+    }
 
-        $obj = new GetConstructorDummy('', $value, true);
+    protected function getNormalizerForCallbacksWithPropertyTypeExtractor(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+
+        return new GetSetMethodNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory), $this->getCallbackPropertyTypeExtractor());
+    }
+
+    protected function getNormalizerForCallbacks(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+
+        return new GetSetMethodNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory));
+    }
+
+    protected function getNormalizerForCircularReference(array $defaultContext): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory), null, null, null, $defaultContext);
+        new Serializer([$normalizer]);
+
+        return $normalizer;
+    }
+
+    protected function getSelfReferencingModel()
+    {
+        return new CircularReferenceDummy();
+    }
+
+    protected function getDenormalizerForConstructArguments(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $denormalizer = new GetSetMethodNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory));
+        new Serializer([$denormalizer]);
+
+        return $denormalizer;
+    }
+
+    protected function getNormalizerForGroups(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+
+        return new GetSetMethodNormalizer($classMetadataFactory);
+    }
+
+    protected function getDenormalizerForGroups(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+
+        return new GetSetMethodNormalizer($classMetadataFactory);
+    }
+
+    protected function getNormalizerForFilterBool(): GetSetMethodNormalizer
+    {
+        return new GetSetMethodNormalizer();
+    }
+
+    public function testGroupsNormalizeWithNameConverter()
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $this->normalizer = new GetSetMethodNormalizer($classMetadataFactory, new CamelCaseToSnakeCaseNameConverter());
+        $this->normalizer->setSerializer($this->serializer);
+
+        $obj = new GroupDummy();
+        $obj->setFooBar('@dunglas');
+        $obj->setSymfony('@coopTilleuls');
+        $obj->setCoopTilleuls('les-tilleuls.coop');
 
         $this->assertEquals(
-            $result,
-            $this->normalizer->normalize($obj, 'any'),
-            $message
+            [
+                'bar' => null,
+                'foo_bar' => '@dunglas',
+                'symfony' => '@coopTilleuls',
+                'default' => null,
+                'class_name' => null,
+            ],
+            $this->normalizer->normalize($obj, null, [GetSetMethodNormalizer::GROUPS => ['name_converter']])
         );
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
-    public function testUncallableCallbacks()
+    public function testGroupsDenormalizeWithNameConverter()
     {
-        $this->normalizer->setCallbacks(array('bar' => null));
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $this->normalizer = new GetSetMethodNormalizer($classMetadataFactory, new CamelCaseToSnakeCaseNameConverter());
+        $this->normalizer->setSerializer($this->serializer);
 
-        $obj = new GetConstructorDummy('baz', 'quux', true);
-
-        $this->normalizer->normalize($obj, 'any');
-    }
-
-    public function testIgnoredAttributes()
-    {
-        $this->normalizer->setIgnoredAttributes(array('foo', 'bar', 'baz', 'camelCase', 'object'));
-
-        $obj = new GetSetDummy();
-        $obj->setFoo('foo');
-        $obj->setBar('bar');
-        $obj->setBaz(true);
+        $obj = new GroupDummy();
+        $obj->setFooBar('@dunglas');
+        $obj->setSymfony('@coopTilleuls');
 
         $this->assertEquals(
-            array('fooBar' => 'foobar'),
-            $this->normalizer->normalize($obj, 'any')
+            $obj,
+            $this->normalizer->denormalize([
+                'bar' => null,
+                'foo_bar' => '@dunglas',
+                'symfony' => '@coopTilleuls',
+                'coop_tilleuls' => 'les-tilleuls.coop',
+            ], GroupDummy::class, null, [GetSetMethodNormalizer::GROUPS => ['name_converter']])
         );
     }
 
-    public function provideCallbacks()
+    protected function getNormalizerForMaxDepth(): NormalizerInterface
     {
-        return array(
-            array(
-                array(
-                    'bar' => function ($bar) {
-                        return 'baz';
-                    },
-                ),
-                'baz',
-                array('foo' => '', 'bar' => 'baz', 'baz' => true),
-                'Change a string',
-            ),
-            array(
-                array(
-                    'bar' => function ($bar) {
-                        return;
-                    },
-                ),
-                'baz',
-                array('foo' => '', 'bar' => null, 'baz' => true),
-                'Null an item',
-            ),
-            array(
-                array(
-                    'bar' => function ($bar) {
-                        return $bar->format('d-m-Y H:i:s');
-                    },
-                ),
-                new \DateTime('2011-09-10 06:30:00'),
-                array('foo' => '', 'bar' => '10-09-2011 06:30:00', 'baz' => true),
-                'Format a date',
-            ),
-            array(
-                array(
-                    'bar' => function ($bars) {
-                        $foos = '';
-                        foreach ($bars as $bar) {
-                            $foos .= $bar->getFoo();
-                        }
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory);
+        $serializer = new Serializer([$normalizer]);
+        $normalizer->setSerializer($serializer);
 
-                        return $foos;
-                    },
-                ),
-                array(new GetConstructorDummy('baz', '', false), new GetConstructorDummy('quux', '', false)),
-                array('foo' => '', 'bar' => 'bazquux', 'baz' => true),
-                'Collect a property',
-            ),
-            array(
-                array(
-                    'bar' => function ($bars) {
-                        return count($bars);
-                    },
-                ),
-                array(new GetConstructorDummy('baz', '', false), new GetConstructorDummy('quux', '', false)),
-                array('foo' => '', 'bar' => 2, 'baz' => true),
-                'Count a property',
-            ),
-        );
+        return $normalizer;
     }
 
-    /**
-     * @expectedException \LogicException
-     * @expectedExceptionMessage Cannot normalize attribute "object" because injected serializer is not a normalizer
-     */
+    protected function getDenormalizerForObjectToPopulate(): DenormalizerInterface
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory, null, new PhpDocExtractor());
+        new Serializer([$normalizer]);
+
+        return $normalizer;
+    }
+
+    protected function getDenormalizerForTypeEnforcement(): DenormalizerInterface
+    {
+        $extractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
+        $normalizer = new GetSetMethodNormalizer(null, null, $extractor);
+        $serializer = new Serializer([new ArrayDenormalizer(), $normalizer]);
+        $normalizer->setSerializer($serializer);
+
+        return $normalizer;
+    }
+
+    public function testRejectInvalidKey()
+    {
+        $this->markTestSkipped('This test makes no sense with the GetSetMethodNormalizer');
+    }
+
+    protected function getNormalizerForIgnoredAttributes(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory, null, new PhpDocExtractor());
+        new Serializer([$normalizer]);
+
+        return $normalizer;
+    }
+
+    protected function getDenormalizerForIgnoredAttributes(): GetSetMethodNormalizer
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory, null, new PhpDocExtractor());
+        new Serializer([$normalizer]);
+
+        return $normalizer;
+    }
+
     public function testUnableToNormalizeObjectAttribute()
     {
-        $serializer = $this->getMock('Symfony\Component\Serializer\SerializerInterface');
+        $serializer = $this->createMock(SerializerInterface::class);
         $this->normalizer->setSerializer($serializer);
 
         $obj = new GetSetDummy();
         $object = new \stdClass();
         $obj->setObject($object);
 
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Cannot normalize attribute "object" because the injected serializer is not a normalizer');
+
         $this->normalizer->normalize($obj, 'any');
-    }
-
-    /**
-     * @expectedException \Symfony\Component\Serializer\Exception\CircularReferenceException
-     */
-    public function testUnableToNormalizeCircularReference()
-    {
-        $serializer = new Serializer(array($this->normalizer));
-        $this->normalizer->setSerializer($serializer);
-        $this->normalizer->setCircularReferenceLimit(2);
-
-        $obj = new CircularReferenceDummy();
-
-        $this->normalizer->normalize($obj);
     }
 
     public function testSiblingReference()
     {
-        $serializer = new Serializer(array($this->normalizer));
+        $serializer = new Serializer([$this->normalizer]);
         $this->normalizer->setSerializer($serializer);
 
-        $siblingHolder = new SiblingHolder();
-
-        $expected = array(
-            'sibling0' => array('coopTilleuls' => 'Les-Tilleuls.coop'),
-            'sibling1' => array('coopTilleuls' => 'Les-Tilleuls.coop'),
-            'sibling2' => array('coopTilleuls' => 'Les-Tilleuls.coop'),
-        );
-        $this->assertEquals($expected, $this->normalizer->normalize($siblingHolder));
+        $expected = [
+            'sibling0' => ['coopTilleuls' => 'Les-Tilleuls.coop'],
+            'sibling1' => ['coopTilleuls' => 'Les-Tilleuls.coop'],
+            'sibling2' => ['coopTilleuls' => 'Les-Tilleuls.coop'],
+        ];
+        $this->assertEquals($expected, $this->normalizer->normalize(new SiblingHolder()));
     }
 
-    public function testCircularReferenceHandler()
+    public function testDenormalizeNonExistingAttribute()
     {
-        $serializer = new Serializer(array($this->normalizer));
-        $this->normalizer->setSerializer($serializer);
-        $this->normalizer->setCircularReferenceHandler(function ($obj) {
-            return get_class($obj);
-        });
+        $this->assertEquals(
+            new GetSetDummy(),
+            $this->normalizer->denormalize(['non_existing' => true], GetSetDummy::class)
+        );
+    }
 
-        $obj = new CircularReferenceDummy();
+    public function testDenormalizeShouldNotSetStaticAttribute()
+    {
+        $obj = $this->normalizer->denormalize(['staticObject' => true], GetSetDummy::class);
 
-        $expected = array('me' => 'Symfony\Component\Serializer\Tests\Fixtures\CircularReferenceDummy');
-        $this->assertEquals($expected, $this->normalizer->normalize($obj));
+        $this->assertEquals(new GetSetDummy(), $obj);
+        $this->assertNull(GetSetDummy::getStaticObject());
+    }
+
+    public function testNoTraversableSupport()
+    {
+        $this->assertFalse($this->normalizer->supportsNormalization(new \ArrayObject()));
+    }
+
+    public function testNoStaticGetSetSupport()
+    {
+        $this->assertFalse($this->normalizer->supportsNormalization(new ObjectWithJustStaticSetterDummy()));
+    }
+
+    /**
+     * @param class-string $class
+     *
+     * @dataProvider provideNotIgnoredMethodSupport
+     */
+    public function testNotIgnoredMethodSupport(string $class)
+    {
+        $this->assertFalse($this->normalizer->supportsNormalization(new $class()));
+    }
+
+    public static function provideNotIgnoredMethodSupport(): iterable
+    {
+        return [
+            [ClassWithIgnoreAttribute::class],
+            [ClassWithIgnoreAnnotation::class],
+        ];
+    }
+
+    public function testPrivateSetter()
+    {
+        $obj = $this->normalizer->denormalize(['foo' => 'foobar'], ObjectWithPrivateSetterDummy::class);
+        $this->assertEquals('bar', $obj->getFoo());
+    }
+
+    public function testHasGetterDenormalize()
+    {
+        $obj = $this->normalizer->denormalize(['foo' => true], ObjectWithHasGetterDummy::class);
+        $this->assertTrue($obj->hasFoo());
+    }
+
+    public function testHasGetterNormalize()
+    {
+        $obj = new ObjectWithHasGetterDummy();
+        $obj->setFoo(true);
+
+        $this->assertEquals(
+            ['foo' => true],
+            $this->normalizer->normalize($obj, 'any')
+        );
+    }
+
+    public function testCallMagicMethodDenormalize()
+    {
+        $obj = $this->normalizer->denormalize(['active' => true], ObjectWithMagicMethod::class);
+        $this->assertTrue($obj->isActive());
+    }
+
+    public function testCallMagicMethodNormalize()
+    {
+        $obj = new ObjectWithMagicMethod();
+
+        $this->assertSame(
+            ['active' => true],
+            $this->normalizer->normalize($obj, 'any')
+        );
+    }
+
+    protected function getObjectCollectionWithExpectedArray(): array
+    {
+        return [[
+            new TypedPropertiesObjectWithGetters(),
+            (new TypedPropertiesObjectWithGetters())->setUninitialized('value2'),
+        ], [
+            ['initialized' => 'value', 'initialized2' => 'value'],
+            ['unInitialized' => 'value2', 'initialized' => 'value', 'initialized2' => 'value'],
+        ]];
+    }
+
+    protected function getNormalizerForCacheableObjectAttributesTest(): GetSetMethodNormalizer
+    {
+        return new GetSetMethodNormalizer();
+    }
+
+    protected function getNormalizerForSkipUninitializedValues(): GetSetMethodNormalizer
+    {
+        return new GetSetMethodNormalizer(new ClassMetadataFactory(new AttributeLoader()));
+    }
+
+    public function testNormalizeWithDiscriminator()
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $discriminator = new ClassDiscriminatorFromClassMetadata($classMetadataFactory);
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory, null, null, $discriminator);
+
+        $this->assertSame(['type' => 'one', 'url' => 'URL_ONE'], $normalizer->normalize(new GetSetMethodDiscriminatedDummyOne()));
+    }
+
+    public function testDenormalizeWithDiscriminator()
+    {
+        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
+        $discriminator = new ClassDiscriminatorFromClassMetadata($classMetadataFactory);
+        $normalizer = new GetSetMethodNormalizer($classMetadataFactory, null, null, $discriminator);
+
+        $denormalized = new GetSetMethodDiscriminatedDummyTwo();
+        $denormalized->setUrl('url');
+
+        $this->assertEquals($denormalized, $normalizer->denormalize(['type' => 'two', 'url' => 'url'], GetSetMethodDummyInterface::class));
     }
 }
 
@@ -326,6 +543,7 @@ class GetSetDummy
     private $baz;
     protected $camelCase;
     protected $object;
+    private static $staticObject;
 
     public function getFoo()
     {
@@ -374,7 +592,7 @@ class GetSetDummy
 
     public function otherMethod()
     {
-        throw new \RuntimeException("Dummy::otherMethod() should not be called");
+        throw new \RuntimeException('Dummy::otherMethod() should not be called');
     }
 
     public function setObject($object)
@@ -385,6 +603,21 @@ class GetSetDummy
     public function getObject()
     {
         return $this->object;
+    }
+
+    public static function getStaticObject()
+    {
+        return self::$staticObject;
+    }
+
+    public static function setStaticObject($object)
+    {
+        self::$staticObject = $object;
+    }
+
+    protected function getPrivate()
+    {
+        throw new \RuntimeException('Dummy::getPrivate() should not be called');
     }
 }
 
@@ -418,7 +651,7 @@ class GetConstructorDummy
 
     public function otherMethod()
     {
-        throw new \RuntimeException("Dummy::otherMethod() should not be called");
+        throw new \RuntimeException('Dummy::otherMethod() should not be called');
     }
 }
 
@@ -432,7 +665,7 @@ class GetConstructorOptionalArgsDummy
     private $bar;
     private $baz;
 
-    public function __construct($foo, $bar = array(), $baz = array())
+    public function __construct($foo, $bar = [], $baz = [])
     {
         $this->foo = $foo;
         $this->bar = $bar;
@@ -456,6 +689,150 @@ class GetConstructorOptionalArgsDummy
 
     public function otherMethod()
     {
-        throw new \RuntimeException("Dummy::otherMethod() should not be called");
+        throw new \RuntimeException('Dummy::otherMethod() should not be called');
+    }
+}
+
+class GetConstructorArgsWithDefaultValueDummy
+{
+    protected $foo;
+    protected $bar;
+
+    public function __construct($foo = [], $bar = null)
+    {
+        $this->foo = $foo;
+        $this->bar = $bar;
+    }
+
+    public function getFoo()
+    {
+        return $this->foo;
+    }
+
+    public function getBar()
+    {
+        return $this->bar;
+    }
+
+    public function otherMethod()
+    {
+        throw new \RuntimeException('Dummy::otherMethod() should not be called');
+    }
+}
+
+class ObjectConstructorArgsWithPrivateMutatorDummy
+{
+    private $foo;
+
+    public function __construct($foo)
+    {
+        $this->setFoo($foo);
+    }
+
+    public function getFoo()
+    {
+        return $this->foo;
+    }
+
+    private function setFoo($foo)
+    {
+        $this->foo = $foo;
+    }
+}
+
+class ObjectWithPrivateSetterDummy
+{
+    private $foo = 'bar';
+
+    public function getFoo()
+    {
+        return $this->foo;
+    }
+
+    private function setFoo($foo)
+    {
+    }
+}
+
+class ObjectWithJustStaticSetterDummy
+{
+    private static $foo = 'bar';
+
+    public static function getFoo()
+    {
+        return self::$foo;
+    }
+
+    public static function setFoo($foo)
+    {
+        self::$foo = $foo;
+    }
+}
+
+class ObjectWithHasGetterDummy
+{
+    private $foo;
+
+    public function setFoo($foo)
+    {
+        $this->foo = $foo;
+    }
+
+    public function hasFoo()
+    {
+        return $this->foo;
+    }
+}
+
+class ObjectWithMagicMethod
+{
+    private $active = true;
+
+    public function isActive()
+    {
+        return $this->active;
+    }
+
+    public function __call($key, $value)
+    {
+        throw new \RuntimeException('__call should not be called. Called with: '.$key);
+    }
+}
+
+#[DiscriminatorMap(typeProperty: 'type', mapping: [
+    'one' => GetSetMethodDiscriminatedDummyOne::class,
+    'two' => GetSetMethodDiscriminatedDummyTwo::class,
+])]
+interface GetSetMethodDummyInterface
+{
+}
+
+class GetSetMethodDiscriminatedDummyOne implements GetSetMethodDummyInterface
+{
+    private $url = 'URL_ONE';
+
+    public function getUrl(): string
+    {
+        return $this->url;
+    }
+
+    public function setUrl(string $url): void
+    {
+        $this->url = $url;
+    }
+}
+
+class GetSetMethodDiscriminatedDummyTwo implements GetSetMethodDummyInterface
+{
+    private $url = 'URL_TWO';
+
+    public function getUrl(): string
+    {
+        return $this->url;
+    }
+
+    public function setUrl(string $url): void
+    {
+        $this->url = $url;
     }
 }

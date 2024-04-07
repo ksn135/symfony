@@ -11,37 +11,39 @@
 
 namespace Symfony\Component\Form;
 
+use Symfony\Contracts\Service\ResetInterface;
+
 /**
  * Default implementation of {@link FormRendererEngineInterface}.
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-abstract class AbstractRendererEngine implements FormRendererEngineInterface
+abstract class AbstractRendererEngine implements FormRendererEngineInterface, ResetInterface
 {
     /**
      * The variable in {@link FormView} used as cache key.
      */
-    const CACHE_KEY_VAR = 'cache_key';
+    public const CACHE_KEY_VAR = 'cache_key';
 
     /**
-     * @var array
+     * @var array[]
      */
-    protected $defaultThemes;
+    protected array $themes = [];
 
     /**
-     * @var array
+     * @var bool[]
      */
-    protected $themes = array();
+    protected array $useDefaultThemes = [];
 
     /**
-     * @var array
+     * @var array[]
      */
-    protected $resources = array();
+    protected array $resources = [];
 
     /**
-     * @var array
+     * @var array<array<int|false>>
      */
-    private $resourceHierarchyLevels = array();
+    private array $resourceHierarchyLevels = [];
 
     /**
      * Creates a new renderer engine.
@@ -49,32 +51,26 @@ abstract class AbstractRendererEngine implements FormRendererEngineInterface
      * @param array $defaultThemes The default themes. The type of these
      *                             themes is open to the implementation.
      */
-    public function __construct(array $defaultThemes = array())
-    {
-        $this->defaultThemes = $defaultThemes;
+    public function __construct(
+        protected array $defaultThemes = [],
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setTheme(FormView $view, $themes)
+    public function setTheme(FormView $view, mixed $themes, bool $useDefaultThemes = true): void
     {
         $cacheKey = $view->vars[self::CACHE_KEY_VAR];
 
         // Do not cast, as casting turns objects into arrays of properties
-        $this->themes[$cacheKey] = is_array($themes) ? $themes : array($themes);
+        $this->themes[$cacheKey] = \is_array($themes) ? $themes : [$themes];
+        $this->useDefaultThemes[$cacheKey] = $useDefaultThemes;
 
         // Unset instead of resetting to an empty array, in order to allow
         // implementations (like TwigRendererEngine) to check whether $cacheKey
         // is set at all.
-        unset($this->resources[$cacheKey]);
-        unset($this->resourceHierarchyLevels[$cacheKey]);
+        unset($this->resources[$cacheKey], $this->resourceHierarchyLevels[$cacheKey]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getResourceForBlockName(FormView $view, $blockName)
+    public function getResourceForBlockName(FormView $view, string $blockName): mixed
     {
         $cacheKey = $view->vars[self::CACHE_KEY_VAR];
 
@@ -85,10 +81,7 @@ abstract class AbstractRendererEngine implements FormRendererEngineInterface
         return $this->resources[$cacheKey][$blockName];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getResourceForBlockNameHierarchy(FormView $view, array $blockNameHierarchy, $hierarchyLevel)
+    public function getResourceForBlockNameHierarchy(FormView $view, array $blockNameHierarchy, int $hierarchyLevel): mixed
     {
         $cacheKey = $view->vars[self::CACHE_KEY_VAR];
         $blockName = $blockNameHierarchy[$hierarchyLevel];
@@ -100,10 +93,7 @@ abstract class AbstractRendererEngine implements FormRendererEngineInterface
         return $this->resources[$cacheKey][$blockName];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getResourceHierarchyLevel(FormView $view, array $blockNameHierarchy, $hierarchyLevel)
+    public function getResourceHierarchyLevel(FormView $view, array $blockNameHierarchy, int $hierarchyLevel): int|false
     {
         $cacheKey = $view->vars[self::CACHE_KEY_VAR];
         $blockName = $blockNameHierarchy[$hierarchyLevel];
@@ -126,32 +116,15 @@ abstract class AbstractRendererEngine implements FormRendererEngineInterface
      * Loads the cache with the resource for a given block name.
      *
      * @see getResourceForBlock()
-     *
-     * @param string   $cacheKey  The cache key of the form view.
-     * @param FormView $view      The form view for finding the applying themes.
-     * @param string   $blockName The name of the block to load.
-     *
-     * @return bool    True if the resource could be loaded, false otherwise.
      */
-    abstract protected function loadResourceForBlockName($cacheKey, FormView $view, $blockName);
+    abstract protected function loadResourceForBlockName(string $cacheKey, FormView $view, string $blockName): bool;
 
     /**
      * Loads the cache with the resource for a specific level of a block hierarchy.
      *
      * @see getResourceForBlockHierarchy()
-     *
-     * @param string   $cacheKey           The cache key used for storing the
-     *                                     resource.
-     * @param FormView $view               The form view for finding the applying
-     *                                     themes.
-     * @param array    $blockNameHierarchy The block hierarchy, with the most
-     *                                     specific block name at the end.
-     * @param int      $hierarchyLevel     The level in the block hierarchy that
-     *                                     should be loaded.
-     *
-     * @return bool    True if the resource could be loaded, false otherwise.
      */
-    private function loadResourceForBlockNameHierarchy($cacheKey, FormView $view, array $blockNameHierarchy, $hierarchyLevel)
+    private function loadResourceForBlockNameHierarchy(string $cacheKey, FormView $view, array $blockNameHierarchy, int $hierarchyLevel): bool
     {
         $blockName = $blockNameHierarchy[$hierarchyLevel];
 
@@ -202,5 +175,13 @@ abstract class AbstractRendererEngine implements FormRendererEngineInterface
         $this->resourceHierarchyLevels[$cacheKey][$blockName] = false;
 
         return false;
+    }
+
+    public function reset(): void
+    {
+        $this->themes = [];
+        $this->useDefaultThemes = [];
+        $this->resources = [];
+        $this->resourceHierarchyLevels = [];
     }
 }

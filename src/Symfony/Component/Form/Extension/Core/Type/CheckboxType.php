@@ -12,18 +12,15 @@
 namespace Symfony\Component\Form\Extension\Core\Type;
 
 use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\DataTransformer\BooleanToStringTransformer;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Form\FormInterface;
-use Symfony\Component\Form\Extension\Core\DataTransformer\BooleanToStringTransformer;
 use Symfony\Component\Form\FormView;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class CheckboxType extends AbstractType
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         // Unlike in other types, where the data is NULL by default, it
         // needs to be a Boolean here. setData(null) is not acceptable
@@ -31,41 +28,35 @@ class CheckboxType extends AbstractType
         // transformer handles this case).
         // We cannot solve this case via overriding the "data" option, because
         // doing so also calls setDataLocked(true).
-        $builder->setData(isset($options['data']) ? $options['data'] : false);
-        $builder->addViewTransformer(new BooleanToStringTransformer($options['value']));
+        $builder->setData($options['data'] ?? false);
+        $builder->addViewTransformer(new BooleanToStringTransformer($options['value'], $options['false_values']));
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildView(FormView $view, FormInterface $form, array $options)
+    public function buildView(FormView $view, FormInterface $form, array $options): void
     {
-        $view->vars = array_replace($view->vars, array(
+        $view->vars = array_replace($view->vars, [
             'value' => $options['value'],
             'checked' => null !== $form->getViewData(),
-        ));
+        ]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        $emptyData = function (FormInterface $form, $viewData) {
-            return $viewData;
-        };
+        $emptyData = static fn (FormInterface $form, $viewData) => $viewData;
 
-        $resolver->setDefaults(array(
+        $resolver->setDefaults([
             'value' => '1',
             'empty_data' => $emptyData,
             'compound' => false,
-        ));
+            'false_values' => [null],
+            'invalid_message' => 'The checkbox has an invalid value.',
+            'is_empty_callback' => static fn ($modelData): bool => false === $modelData,
+        ]);
+
+        $resolver->setAllowedTypes('false_values', 'array');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getBlockPrefix(): string
     {
         return 'checkbox';
     }

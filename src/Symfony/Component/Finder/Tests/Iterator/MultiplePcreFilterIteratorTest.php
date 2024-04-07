@@ -11,9 +11,10 @@
 
 namespace Symfony\Component\Finder\Tests\Iterator;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Finder\Iterator\MultiplePcreFilterIterator;
 
-class MultiplePcreFilterIteratorTest extends \PHPUnit_Framework_TestCase
+class MultiplePcreFilterIteratorTest extends TestCase
 {
     /**
      * @dataProvider getIsRegexFixtures
@@ -24,23 +25,25 @@ class MultiplePcreFilterIteratorTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($isRegex, $testIterator->isRegex($string), $message);
     }
 
-    public function getIsRegexFixtures()
+    public static function getIsRegexFixtures()
     {
-        return array(
-            array('foo', false, 'string'),
-            array(' foo ', false, '" " is not a valid delimiter'),
-            array('\\foo\\', false, '"\\" is not a valid delimiter'),
-            array('afooa', false, '"a" is not a valid delimiter'),
-            array('//', false, 'the pattern should contain at least 1 character'),
-            array('/a/', true, 'valid regex'),
-            array('/foo/', true, 'valid regex'),
-            array('/foo/i', true, 'valid regex with a single modifier'),
-            array('/foo/imsxu', true, 'valid regex with multiple modifiers'),
-            array('#foo#', true, '"#" is a valid delimiter'),
-            array('{foo}', true, '"{,}" is a valid delimiter pair'),
-            array('*foo.*', false, '"*" is not considered as a valid delimiter'),
-            array('?foo.?', false, '"?" is not considered as a valid delimiter'),
-        );
+        yield ['foo', false, 'string'];
+        yield [' foo ', false, '" " is not a valid delimiter'];
+        yield ['\\foo\\', false, '"\\" is not a valid delimiter'];
+        yield ['afooa', false, '"a" is not a valid delimiter'];
+        yield ['//', false, 'the pattern should contain at least 1 character'];
+        yield ['/a/', true, 'valid regex'];
+        yield ['/foo/', true, 'valid regex'];
+        yield ['/foo/i', true, 'valid regex with a single modifier'];
+        yield ['/foo/imsxu', true, 'valid regex with multiple modifiers'];
+        yield ['#foo#', true, '"#" is a valid delimiter'];
+        yield ['{foo}', true, '"{,}" is a valid delimiter pair'];
+        yield ['[foo]', true, '"[,]" is a valid delimiter pair'];
+        yield ['(foo)', true, '"(,)" is a valid delimiter pair'];
+        yield ['<foo>', true, '"<,>" is a valid delimiter pair'];
+        yield ['*foo.*', false, '"*" is not considered as a valid delimiter'];
+        yield ['?foo.?', false, '"?" is not considered as a valid delimiter'];
+        yield ['/foo/n', true, 'valid regex with the no-capture modifier'];
     }
 }
 
@@ -50,17 +53,17 @@ class TestMultiplePcreFilterIterator extends MultiplePcreFilterIterator
     {
     }
 
-    public function accept()
+    public function accept(): bool
     {
         throw new \BadFunctionCallException('Not implemented');
     }
 
-    public function isRegex($str)
+    public function isRegex(string $str): bool
     {
         return parent::isRegex($str);
     }
 
-    public function toRegex($str)
+    public function toRegex(string $str): string
     {
         throw new \BadFunctionCallException('Not implemented');
     }

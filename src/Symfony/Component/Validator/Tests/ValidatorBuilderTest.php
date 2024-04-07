@@ -11,37 +11,33 @@
 
 namespace Symfony\Component\Validator\Tests;
 
-use Symfony\Component\Validator\Validation;
+use PHPUnit\Framework\TestCase;
+use Psr\Cache\CacheItemPoolInterface;
+use Symfony\Component\Validator\ConstraintValidatorFactoryInterface;
+use Symfony\Component\Validator\ObjectInitializerInterface;
+use Symfony\Component\Validator\Validator\RecursiveValidator;
 use Symfony\Component\Validator\ValidatorBuilder;
-use Symfony\Component\Validator\ValidatorBuilderInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
-class ValidatorBuilderTest extends \PHPUnit_Framework_TestCase
+class ValidatorBuilderTest extends TestCase
 {
-    /**
-     * @var ValidatorBuilderInterface
-     */
-    protected $builder;
+    private ValidatorBuilder $builder;
 
-    protected function setUp()
+    protected function setUp(): void
     {
         $this->builder = new ValidatorBuilder();
-    }
-
-    protected function tearDown()
-    {
-        $this->builder = null;
     }
 
     public function testAddObjectInitializer()
     {
         $this->assertSame($this->builder, $this->builder->addObjectInitializer(
-            $this->getMock('Symfony\Component\Validator\ObjectInitializerInterface')
+            $this->createMock(ObjectInitializerInterface::class)
         ));
     }
 
     public function testAddObjectInitializers()
     {
-        $this->assertSame($this->builder, $this->builder->addObjectInitializers(array()));
+        $this->assertSame($this->builder, $this->builder->addObjectInitializers([]));
     }
 
     public function testAddXmlMapping()
@@ -51,7 +47,7 @@ class ValidatorBuilderTest extends \PHPUnit_Framework_TestCase
 
     public function testAddXmlMappings()
     {
-        $this->assertSame($this->builder, $this->builder->addXmlMappings(array()));
+        $this->assertSame($this->builder, $this->builder->addXmlMappings([]));
     }
 
     public function testAddYamlMapping()
@@ -61,7 +57,7 @@ class ValidatorBuilderTest extends \PHPUnit_Framework_TestCase
 
     public function testAddYamlMappings()
     {
-        $this->assertSame($this->builder, $this->builder->addYamlMappings(array()));
+        $this->assertSame($this->builder, $this->builder->addYamlMappings([]));
     }
 
     public function testAddMethodMapping()
@@ -71,37 +67,30 @@ class ValidatorBuilderTest extends \PHPUnit_Framework_TestCase
 
     public function testAddMethodMappings()
     {
-        $this->assertSame($this->builder, $this->builder->addMethodMappings(array()));
+        $this->assertSame($this->builder, $this->builder->addMethodMappings([]));
     }
 
-    public function testEnableAnnotationMapping()
+    public function testDisableAttributeMapping()
     {
-        $this->assertSame($this->builder, $this->builder->enableAnnotationMapping());
+        $this->assertSame($this->builder, $this->builder->disableAttributeMapping());
     }
 
-    public function testDisableAnnotationMapping()
+    public function testSetMappingCache()
     {
-        $this->assertSame($this->builder, $this->builder->disableAnnotationMapping());
-    }
-
-    public function testSetMetadataCache()
-    {
-        $this->assertSame($this->builder, $this->builder->setMetadataCache(
-            $this->getMock('Symfony\Component\Validator\Mapping\Cache\CacheInterface'))
-        );
+        $this->assertSame($this->builder, $this->builder->setMappingCache($this->createMock(CacheItemPoolInterface::class)));
     }
 
     public function testSetConstraintValidatorFactory()
     {
         $this->assertSame($this->builder, $this->builder->setConstraintValidatorFactory(
-            $this->getMock('Symfony\Component\Validator\ConstraintValidatorFactoryInterface'))
+            $this->createMock(ConstraintValidatorFactoryInterface::class))
         );
     }
 
     public function testSetTranslator()
     {
         $this->assertSame($this->builder, $this->builder->setTranslator(
-            $this->getMock('Symfony\Component\Translation\TranslatorInterface'))
+            $this->createMock(TranslatorInterface::class))
         );
     }
 
@@ -110,36 +99,8 @@ class ValidatorBuilderTest extends \PHPUnit_Framework_TestCase
         $this->assertSame($this->builder, $this->builder->setTranslationDomain('TRANS_DOMAIN'));
     }
 
-    public function testDefaultApiVersion()
+    public function testGetValidator()
     {
-        if (version_compare(PHP_VERSION, '5.3.9', '<')) {
-            // Old implementation on PHP < 5.3.9
-            $this->assertInstanceOf('Symfony\Component\Validator\Validator', $this->builder->getValidator());
-        } else {
-            // Legacy compatible implementation on PHP >= 5.3.9
-            $this->assertInstanceOf('Symfony\Component\Validator\Validator\LegacyValidator', $this->builder->getValidator());
-        }
-    }
-
-    public function testSetApiVersion24()
-    {
-        $this->assertSame($this->builder, $this->builder->setApiVersion(Validation::API_VERSION_2_4));
-        $this->assertInstanceOf('Symfony\Component\Validator\Validator', $this->builder->getValidator());
-    }
-
-    public function testSetApiVersion25()
-    {
-        $this->assertSame($this->builder, $this->builder->setApiVersion(Validation::API_VERSION_2_5));
-        $this->assertInstanceOf('Symfony\Component\Validator\Validator\RecursiveValidator', $this->builder->getValidator());
-    }
-
-    public function testSetApiVersion24And25()
-    {
-        if (version_compare(PHP_VERSION, '5.3.9', '<')) {
-            $this->markTestSkipped('Not supported prior to PHP 5.3.9');
-        }
-
-        $this->assertSame($this->builder, $this->builder->setApiVersion(Validation::API_VERSION_2_5_BC));
-        $this->assertInstanceOf('Symfony\Component\Validator\Validator\LegacyValidator', $this->builder->getValidator());
+        $this->assertInstanceOf(RecursiveValidator::class, $this->builder->getValidator());
     }
 }

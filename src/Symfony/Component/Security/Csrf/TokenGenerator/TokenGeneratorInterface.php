@@ -14,15 +14,12 @@ namespace Symfony\Component\Security\Csrf\TokenGenerator;
 /**
  * Generates CSRF tokens.
  *
- * @since  2.4
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
 interface TokenGeneratorInterface
 {
     /**
      * Generates a CSRF token.
-     *
-     * @return string The generated CSRF token
      */
-    public function generateToken();
+    public function generateToken(): string;
 }

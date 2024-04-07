@@ -11,57 +11,48 @@
 
 namespace Symfony\Component\HttpKernel\Tests\EventListener;
 
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Definition;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\HttpKernel\EventListener\DumpListener;
-use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\VarDumper\Cloner\ClonerInterface;
+use Symfony\Component\VarDumper\Cloner\Data;
+use Symfony\Component\VarDumper\Dumper\DataDumperInterface;
 use Symfony\Component\VarDumper\VarDumper;
 
 /**
- * DumpListenerTest
+ * DumpListenerTest.
  *
  * @author Nicolas Grekas <p@tchwork.com>
  */
-class DumpListenerTest extends \PHPUnit_Framework_TestCase
+class DumpListenerTest extends TestCase
 {
     public function testSubscribedEvents()
     {
         $this->assertSame(
-            array(KernelEvents::REQUEST => array('configure', 1024)),
+            [ConsoleEvents::COMMAND => ['configure', 1024]],
             DumpListener::getSubscribedEvents()
         );
     }
 
     public function testConfigure()
     {
-        $prevDumper = $this->getDumpHandler();
+        $prevDumper = VarDumper::setHandler('var_dump');
+        VarDumper::setHandler($prevDumper);
 
-        $container = new ContainerBuilder();
-        $container->setDefinition('var_dumper.cloner', new Definition('Symfony\Component\HttpKernel\Tests\EventListener\MockCloner'));
-        $container->setDefinition('mock_dumper', new Definition('Symfony\Component\HttpKernel\Tests\EventListener\MockDumper'));
+        $cloner = new MockCloner();
+        $dumper = new MockDumper();
 
         ob_start();
         $exception = null;
-        $listener = new DumpListener($container, 'mock_dumper');
+        $listener = new DumpListener($cloner, $dumper);
 
         try {
             $listener->configure();
 
-            $lazyDumper = $this->getDumpHandler();
             VarDumper::dump('foo');
-
-            $loadedDumper = $this->getDumpHandler();
             VarDumper::dump('bar');
 
             $this->assertSame('+foo-+bar-', ob_get_clean());
-
-            $listenerReflector = new \ReflectionClass($listener);
-            $lazyReflector = new \ReflectionFunction($lazyDumper);
-            $loadedReflector = new \ReflectionFunction($loadedDumper);
-
-            $this->assertSame($listenerReflector->getFilename(), $lazyReflector->getFilename());
-            $this->assertSame($listenerReflector->getFilename(), $loadedReflector->getFilename());
-            $this->assertGreaterThan($lazyReflector->getStartLine(), $loadedReflector->getStartLine());
         } catch (\Exception $exception) {
         }
 
@@ -71,28 +62,22 @@ class DumpListenerTest extends \PHPUnit_Framework_TestCase
             throw $exception;
         }
     }
+}
 
-    private function getDumpHandler()
+class MockCloner implements ClonerInterface
+{
+    public function cloneVar($var): Data
     {
-        $prevDumper = VarDumper::setHandler('var_dump');
-        VarDumper::setHandler($prevDumper );
-
-        return $prevDumper;
+        return new Data([[$var.'-']]);
     }
 }
 
-class MockCloner
+class MockDumper implements DataDumperInterface
 {
-    public function cloneVar($var)
+    public function dump(Data $data): ?string
     {
-        return $var.'-';
-    }
-}
+        echo '+'.$data->getValue();
 
-class MockDumper
-{
-    public function dump($var)
-    {
-        echo '+'.$var;
+        return null;
     }
 }

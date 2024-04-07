@@ -11,7 +11,8 @@
 
 namespace Symfony\Component\DependencyInjection;
 
-use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
+use Psr\Container\ContainerInterface as PsrContainerInterface;
+use Symfony\Component\DependencyInjection\Exception\ParameterNotFoundException;
 use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceException;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 
@@ -20,139 +21,44 @@ use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
  *
  * @author Fabien Potencier <fabien@symfony.com>
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
- *
- * @api
  */
-interface ContainerInterface
+interface ContainerInterface extends PsrContainerInterface
 {
-    const EXCEPTION_ON_INVALID_REFERENCE = 1;
-    const NULL_ON_INVALID_REFERENCE = 2;
-    const IGNORE_ON_INVALID_REFERENCE = 3;
-    const SCOPE_CONTAINER = 'container';
-    const SCOPE_PROTOTYPE = 'prototype';
+    public const RUNTIME_EXCEPTION_ON_INVALID_REFERENCE = 0;
+    public const EXCEPTION_ON_INVALID_REFERENCE = 1;
+    public const NULL_ON_INVALID_REFERENCE = 2;
+    public const IGNORE_ON_INVALID_REFERENCE = 3;
+    public const IGNORE_ON_UNINITIALIZED_REFERENCE = 4;
+
+    public function set(string $id, ?object $service): void;
 
     /**
-     * Sets a service.
+     * @template B of self::*_REFERENCE
      *
-     * @param string $id      The service identifier
-     * @param object $service The service instance
-     * @param string $scope   The scope of the service
+     * @param B $invalidBehavior
      *
-     * @api
-     */
-    public function set($id, $service, $scope = self::SCOPE_CONTAINER);
-
-    /**
-     * Gets a service.
+     * @psalm-return (B is self::EXCEPTION_ON_INVALID_REFERENCE|self::RUNTIME_EXCEPTION_ON_INVALID_REFERENCE ? object : object|null)
      *
-     * @param string $id              The service identifier
-     * @param int    $invalidBehavior The behavior when the service does not exist
-     *
-     * @return object The associated service
-     *
-     * @throws InvalidArgumentException if the service is not defined
      * @throws ServiceCircularReferenceException When a circular reference is detected
-     * @throws ServiceNotFoundException When the service is not defined
+     * @throws ServiceNotFoundException          When the service is not defined
      *
      * @see Reference
-     *
-     * @api
      */
-    public function get($id, $invalidBehavior = self::EXCEPTION_ON_INVALID_REFERENCE);
+    public function get(string $id, int $invalidBehavior = self::EXCEPTION_ON_INVALID_REFERENCE): ?object;
+
+    public function has(string $id): bool;
 
     /**
-     * Returns true if the given service is defined.
-     *
-     * @param string $id The service identifier
-     *
-     * @return bool    true if the service is defined, false otherwise
-     *
-     * @api
+     * Check for whether or not a service has been initialized.
      */
-    public function has($id);
+    public function initialized(string $id): bool;
 
     /**
-     * Gets a parameter.
-     *
-     * @param string $name The parameter name
-     *
-     * @return mixed  The parameter value
-     *
-     * @throws InvalidArgumentException if the parameter is not defined
-     *
-     * @api
+     * @throws ParameterNotFoundException if the parameter is not defined
      */
-    public function getParameter($name);
+    public function getParameter(string $name): array|bool|string|int|float|\UnitEnum|null;
 
-    /**
-     * Checks if a parameter exists.
-     *
-     * @param string $name The parameter name
-     *
-     * @return bool    The presence of parameter in container
-     *
-     * @api
-     */
-    public function hasParameter($name);
+    public function hasParameter(string $name): bool;
 
-    /**
-     * Sets a parameter.
-     *
-     * @param string $name  The parameter name
-     * @param mixed  $value The parameter value
-     *
-     * @api
-     */
-    public function setParameter($name, $value);
-
-    /**
-     * Enters the given scope
-     *
-     * @param string $name
-     *
-     * @api
-     */
-    public function enterScope($name);
-
-    /**
-     * Leaves the current scope, and re-enters the parent scope
-     *
-     * @param string $name
-     *
-     * @api
-     */
-    public function leaveScope($name);
-
-    /**
-     * Adds a scope to the container
-     *
-     * @param ScopeInterface $scope
-     *
-     * @api
-     */
-    public function addScope(ScopeInterface $scope);
-
-    /**
-     * Whether this container has the given scope
-     *
-     * @param string $name
-     *
-     * @return bool
-     *
-     * @api
-     */
-    public function hasScope($name);
-
-    /**
-     * Determines whether the given scope is currently active.
-     *
-     * It does however not check if the scope actually exists.
-     *
-     * @param string $name
-     *
-     * @return bool
-     *
-     * @api
-     */
-    public function isScopeActive($name);
+    public function setParameter(string $name, array|bool|string|int|float|\UnitEnum|null $value): void;
 }

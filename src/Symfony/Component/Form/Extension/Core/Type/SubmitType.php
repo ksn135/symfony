@@ -15,6 +15,7 @@ use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Form\FormView;
 use Symfony\Component\Form\SubmitButtonTypeInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
  * A submit button.
@@ -23,23 +24,27 @@ use Symfony\Component\Form\SubmitButtonTypeInterface;
  */
 class SubmitType extends AbstractType implements SubmitButtonTypeInterface
 {
-    public function buildView(FormView $view, FormInterface $form, array $options)
+    public function buildView(FormView $view, FormInterface $form, array $options): void
     {
         $view->vars['clicked'] = $form->isClicked();
+
+        if (!$options['validate']) {
+            $view->vars['attr']['formnovalidate'] = true;
+        }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getParent()
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        return 'button';
+        $resolver->setDefault('validate', true);
+        $resolver->setAllowedTypes('validate', 'bool');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getParent(): ?string
+    {
+        return ButtonType::class;
+    }
+
+    public function getBlockPrefix(): string
     {
         return 'submit';
     }

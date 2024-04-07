@@ -20,32 +20,18 @@ use Symfony\Component\Routing\RouteCollection;
  * The Closure must return a RouteCollection instance.
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 class ClosureLoader extends Loader
 {
     /**
      * Loads a Closure.
-     *
-     * @param \Closure    $closure A Closure
-     * @param string|null $type    The resource type
-     *
-     * @return RouteCollection A RouteCollection instance
-     *
-     * @api
      */
-    public function load($closure, $type = null)
+    public function load(mixed $closure, ?string $type = null): RouteCollection
     {
-        return call_user_func($closure);
+        return $closure($this->env);
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function supports($resource, $type = null)
+    public function supports(mixed $resource, ?string $type = null): bool
     {
         return $resource instanceof \Closure && (!$type || 'closure' === $type);
     }

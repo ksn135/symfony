@@ -1,4 +1,5 @@
 <?php
+
 /*
  * This file is part of the Symfony package.
  *
@@ -10,38 +11,46 @@
 
 namespace Symfony\Component\Form\Tests\Extension\DataCollector\Type;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Form\Extension\DataCollector\FormDataCollector;
+use Symfony\Component\Form\Extension\DataCollector\FormDataExtractor;
 use Symfony\Component\Form\Extension\DataCollector\Type\DataCollectorTypeExtension;
+use Symfony\Component\Form\FormBuilder;
+use Symfony\Component\Form\FormEvents;
+use Symfony\Component\Form\FormFactory;
+use Symfony\Component\Form\FormRegistry;
+use Symfony\Component\Form\ResolvedFormTypeFactory;
 
-class DataCollectorTypeExtensionTest extends \PHPUnit_Framework_TestCase
+class DataCollectorTypeExtensionTest extends TestCase
 {
-    /**
-     * @var DataCollectorTypeExtension
-     */
-    private $extension;
+    private DataCollectorTypeExtension $extension;
 
-    /**
-     * @var \PHPUnit_Framework_MockObject_MockObject
-     */
-    private $dataCollector;
-
-    public function setUp()
+    protected function setUp(): void
     {
-        $this->dataCollector = $this->getMock('Symfony\Component\Form\Extension\DataCollector\FormDataCollectorInterface');
-        $this->extension = new DataCollectorTypeExtension($this->dataCollector);
+        $this->extension = new DataCollectorTypeExtension(new FormDataCollector(new FormDataExtractor()));
     }
 
     public function testGetExtendedType()
     {
-        $this->assertEquals('form', $this->extension->getExtendedType());
+        $this->assertEquals(['Symfony\Component\Form\Extension\Core\Type\FormType'], $this->extension::getExtendedTypes());
     }
 
     public function testBuildForm()
     {
-        $builder = $this->getMock('Symfony\Component\Form\Test\FormBuilderInterface');
-        $builder->expects($this->atLeastOnce())
-            ->method('addEventSubscriber')
-            ->with($this->isInstanceOf('Symfony\Component\Form\Extension\DataCollector\EventListener\DataCollectorListener'));
+        $eventDispatcher = new EventDispatcher();
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::PRE_SET_DATA));
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::POST_SET_DATA));
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::PRE_SUBMIT));
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::SUBMIT));
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::POST_SUBMIT));
 
-        $this->extension->buildForm($builder, array());
+        $this->extension->buildForm(new FormBuilder(null, null, $eventDispatcher, new FormFactory(new FormRegistry([], new ResolvedFormTypeFactory()))), []);
+
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::PRE_SET_DATA));
+        $this->assertTrue($eventDispatcher->hasListeners(FormEvents::POST_SET_DATA));
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::PRE_SUBMIT));
+        $this->assertFalse($eventDispatcher->hasListeners(FormEvents::SUBMIT));
+        $this->assertTrue($eventDispatcher->hasListeners(FormEvents::POST_SUBMIT));
     }
 }

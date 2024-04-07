@@ -11,52 +11,53 @@
 
 namespace Symfony\Component\DependencyInjection\Tests\Compiler;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\Compiler\CheckDefinitionValidityPass;
-use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Exception\EnvParameterException;
+use Symfony\Component\DependencyInjection\Exception\RuntimeException;
 
-class CheckDefinitionValidityPassTest extends \PHPUnit_Framework_TestCase
+class CheckDefinitionValidityPassTest extends TestCase
 {
-    /**
-     * @expectedException \Symfony\Component\DependencyInjection\Exception\RuntimeException
-     */
     public function testProcessDetectsSyntheticNonPublicDefinitions()
     {
         $container = new ContainerBuilder();
         $container->register('a')->setSynthetic(true)->setPublic(false);
 
-        $this->process($container);
-    }
-
-    /**
-     * @expectedException \Symfony\Component\DependencyInjection\Exception\RuntimeException
-     */
-    public function testProcessDetectsSyntheticPrototypeDefinitions()
-    {
-        $container = new ContainerBuilder();
-        $container->register('a')->setSynthetic(true)->setScope(ContainerInterface::SCOPE_PROTOTYPE);
+        $this->expectException(RuntimeException::class);
 
         $this->process($container);
     }
 
-    /**
-     * @expectedException \Symfony\Component\DependencyInjection\Exception\RuntimeException
-     */
     public function testProcessDetectsNonSyntheticNonAbstractDefinitionWithoutClass()
     {
         $container = new ContainerBuilder();
         $container->register('a')->setSynthetic(false)->setAbstract(false);
 
+        $this->expectException(RuntimeException::class);
+
         $this->process($container);
     }
 
-    /**
-     * @expectedException \Symfony\Component\DependencyInjection\Exception\RuntimeException
-     */
-    public function testProcessDetectsBothFactorySyntaxesUsed()
+    public function testProcessAcceptsServiceLocatorWithoutClass()
     {
         $container = new ContainerBuilder();
-        $container->register('a')->setFactory(array('a', 'b'))->setFactoryClass('a');
+        $container->register('a')->addTag('container.service_locator');
+
+        $this->process($container);
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testProcessDetectsFactoryWithoutClass()
+    {
+        $container = new ContainerBuilder();
+
+        $container->register('.123_anonymous_service_id_should_not_throw_~1234567')->setFactory('factory');
+        $this->process($container);
+
+        $this->expectException(RuntimeException::class);
+        $container->register('.any_non_anonymous_id_throws')->setFactory('factory');
 
         $this->process($container);
     }
@@ -65,33 +66,95 @@ class CheckDefinitionValidityPassTest extends \PHPUnit_Framework_TestCase
     {
         $container = new ContainerBuilder();
         $container->register('a', 'class');
-        $container->register('b', 'class')->setSynthetic(true)->setPublic(true);
+        $container->register('b', 'class')->setSynthetic(true);
         $container->register('c', 'class')->setAbstract(true);
-        $container->register('d', 'class')->setSynthetic(true);
 
         $this->process($container);
+
+        $this->addToAssertionCount(1);
     }
 
     public function testValidTags()
     {
         $container = new ContainerBuilder();
-        $container->register('a', 'class')->addTag('foo', array('bar' => 'baz'));
-        $container->register('b', 'class')->addTag('foo', array('bar' => null));
-        $container->register('c', 'class')->addTag('foo', array('bar' => 1));
-        $container->register('d', 'class')->addTag('foo', array('bar' => 1.1));
+        $container->register('a', 'class')->addTag('foo', ['bar' => 'baz']);
+        $container->register('b', 'class')->addTag('foo', ['bar' => null]);
+        $container->register('c', 'class')->addTag('foo', ['bar' => 1]);
+        $container->register('d', 'class')->addTag('foo', ['bar' => 1.1]);
+        $container->register('d', 'class')->addTag('foo', ['bar' => ['baz' => 'baz']]);
+        $container->register('e', 'class')->addTag('foo', ['deep' => ['foo' => ['bar' => 'baz']]]);
+
+        $this->process($container);
+
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * @dataProvider provideInvalidTags
+     */
+    public function testInvalidTags(string $name, array $attributes, string $message)
+    {
+        $this->expectExceptionMessage($message);
+        $container = new ContainerBuilder();
+        $container->register('a', 'class')->addTag($name, $attributes);
+
+        $this->expectException(RuntimeException::class);
 
         $this->process($container);
     }
 
-    /**
-     * @expectedException \Symfony\Component\DependencyInjection\Exception\RuntimeException
-     */
-    public function testInvalidTags()
+    public static function provideInvalidTags(): iterable
+    {
+        $message = 'A "tags" attribute must be of a scalar-type for service "a", tag "%s", attribute "%s".';
+        yield 'object attribute value' => [
+            'foo',
+            ['bar' => new class() {}],
+            sprintf($message, 'foo', 'bar'),
+        ];
+        yield 'nested object attribute value' => [
+            'foo',
+            ['bar' => ['baz' => new class() {}]],
+            sprintf($message, 'foo', 'bar.baz'),
+        ];
+        yield 'deeply nested object attribute value' => [
+            'foo',
+            ['bar' => ['baz' => ['qux' => new class() {}]]],
+            sprintf($message, 'foo', 'bar.baz.qux'),
+        ];
+    }
+
+    public function testDynamicPublicServiceName()
     {
         $container = new ContainerBuilder();
-        $container->register('a', 'class')->addTag('foo', array('bar' => array('baz' => 'baz')));
+        $env = $container->getParameterBag()->get('env(BAR)');
+        $container->register("foo.$env", 'class')->setPublic(true);
+
+        $this->expectException(EnvParameterException::class);
 
         $this->process($container);
+    }
+
+    public function testDynamicPublicAliasName()
+    {
+        $container = new ContainerBuilder();
+        $env = $container->getParameterBag()->get('env(BAR)');
+        $container->setAlias("foo.$env", 'class')->setPublic(true);
+
+        $this->expectException(EnvParameterException::class);
+
+        $this->process($container);
+    }
+
+    public function testDynamicPrivateName()
+    {
+        $container = new ContainerBuilder();
+        $env = $container->getParameterBag()->get('env(BAR)');
+        $container->register("foo.$env", 'class');
+        $container->setAlias("bar.$env", 'class');
+
+        $this->process($container);
+
+        $this->addToAssertionCount(1);
     }
 
     protected function process(ContainerBuilder $container)

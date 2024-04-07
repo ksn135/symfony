@@ -12,34 +12,43 @@
 namespace Symfony\Component\Validator\Constraints;
 
 use Symfony\Component\Validator\Constraint;
-use Symfony\Component\Validator\Exception\ConstraintDefinitionException;
 
 /**
- * @Annotation
- * @Target({"PROPERTY", "METHOD", "ANNOTATION"})
+ * Validates an object embedded in an object's property.
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
- *
- * @api
  */
+#[\Attribute(\Attribute::TARGET_PROPERTY | \Attribute::TARGET_METHOD | \Attribute::IS_REPEATABLE)]
 class Valid extends Constraint
 {
-    public $traverse = true;
+    public bool $traverse = true;
 
     /**
-     * @deprecated Deprecated as of version 2.5, to be removed in Symfony 3.0.
+     * @param array<string,mixed>|null $options
+     * @param string[]|null            $groups
+     * @param bool|null                $traverse Whether to validate {@see \Traversable} objects (defaults to true)
      */
-    public $deep = true;
-
-    public function __construct($options = null)
+    public function __construct(?array $options = null, ?array $groups = null, $payload = null, ?bool $traverse = null)
     {
-        if (is_array($options) && array_key_exists('groups', $options)) {
-            throw new ConstraintDefinitionException(sprintf(
-                'The option "groups" is not supported by the constraint %s',
-                __CLASS__
-            ));
+        parent::__construct($options ?? [], $groups, $payload);
+
+        $this->traverse = $traverse ?? $this->traverse;
+    }
+
+    public function __get(string $option): mixed
+    {
+        if ('groups' === $option) {
+            // when this is reached, no groups have been configured
+            return null;
         }
 
-        parent::__construct($options);
+        return parent::__get($option);
+    }
+
+    public function addImplicitGroupName(string $group): void
+    {
+        if (null !== $this->groups) {
+            parent::addImplicitGroupName($group);
+        }
     }
 }

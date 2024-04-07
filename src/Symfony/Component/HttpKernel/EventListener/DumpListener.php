@@ -11,9 +11,11 @@
 
 namespace Symfony\Component\HttpKernel\EventListener;
 
-use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\VarDumper\Cloner\ClonerInterface;
+use Symfony\Component\VarDumper\Dumper\DataDumperInterface;
+use Symfony\Component\VarDumper\Server\Connection;
 use Symfony\Component\VarDumper\VarDumper;
 
 /**
@@ -23,39 +25,38 @@ use Symfony\Component\VarDumper\VarDumper;
  */
 class DumpListener implements EventSubscriberInterface
 {
-    private $container;
-    private $dumper;
-
-    /**
-     * @param ContainerInterface $container Service container, for lazy loading.
-     * @param string             $dumper    var_dumper dumper service to use.
-     */
-    public function __construct(ContainerInterface $container, $dumper)
-    {
-        $this->container = $container;
-        $this->dumper = $dumper;
+    public function __construct(
+        private ClonerInterface $cloner,
+        private DataDumperInterface $dumper,
+        private ?Connection $connection = null,
+    ) {
     }
 
-    public function configure()
+    public function configure(): void
     {
-        if ($this->container) {
-            $container = $this->container;
-            $dumper = $this->dumper;
-            $this->container = null;
+        $cloner = $this->cloner;
+        $dumper = $this->dumper;
+        $connection = $this->connection;
 
-            VarDumper::setHandler(function ($var) use ($container, $dumper) {
-                $dumper = $container->get($dumper);
-                $cloner = $container->get('var_dumper.cloner');
-                $handler = function ($var) use ($dumper, $cloner) {$dumper->dump($cloner->cloneVar($var));};
-                VarDumper::setHandler($handler);
-                $handler($var);
-            });
+        VarDumper::setHandler(static function ($var, ?string $label = null) use ($cloner, $dumper, $connection) {
+            $data = $cloner->cloneVar($var);
+            if (null !== $label) {
+                $data = $data->withContext(['label' => $label]);
+            }
+
+            if (!$connection || !$connection->write($data)) {
+                $dumper->dump($data);
+            }
+        });
+    }
+
+    public static function getSubscribedEvents(): array
+    {
+        if (!class_exists(ConsoleEvents::class)) {
+            return [];
         }
-    }
 
-    public static function getSubscribedEvents()
-    {
         // Register early to have a working dump() as early as possible
-        return array(KernelEvents::REQUEST => array('configure', 1024));
+        return [ConsoleEvents::COMMAND => ['configure', 1024]];
     }
 }

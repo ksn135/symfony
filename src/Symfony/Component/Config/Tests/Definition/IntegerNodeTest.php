@@ -11,51 +11,66 @@
 
 namespace Symfony\Component\Config\Tests\Definition;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Definition\Exception\InvalidTypeException;
 use Symfony\Component\Config\Definition\IntegerNode;
 
-class IntegerNodeTest extends \PHPUnit_Framework_TestCase
+class IntegerNodeTest extends TestCase
 {
     /**
      * @dataProvider getValidValues
      */
-    public function testNormalize($value)
+    public function testNormalize(int $value)
     {
         $node = new IntegerNode('test');
         $this->assertSame($value, $node->normalize($value));
     }
 
-    public function getValidValues()
+    /**
+     * @dataProvider getValidValues
+     */
+    public function testValidNonEmptyValues(int $value)
     {
-        return array(
-            array(1798),
-            array(-678),
-            array(0),
-        );
+        $node = new IntegerNode('test');
+        $node->setAllowEmptyValue(false);
+
+        $this->assertSame($value, $node->finalize($value));
+    }
+
+    public static function getValidValues(): array
+    {
+        return [
+            [1798],
+            [-678],
+            [0],
+        ];
     }
 
     /**
      * @dataProvider getInvalidValues
-     * @expectedException \Symfony\Component\Config\Definition\Exception\InvalidTypeException
      */
     public function testNormalizeThrowsExceptionOnInvalidValues($value)
     {
         $node = new IntegerNode('test');
+
+        $this->expectException(InvalidTypeException::class);
+
         $node->normalize($value);
     }
 
-    public function getInvalidValues()
+    public static function getInvalidValues(): array
     {
-        return array(
-            array(null),
-            array(''),
-            array('foo'),
-            array(true),
-            array(false),
-            array(0.0),
-            array(0.1),
-            array(array()),
-            array(array('foo' => 'bar')),
-            array(new \stdClass()),
-        );
+        return [
+            [null],
+            [''],
+            ['foo'],
+            [true],
+            [false],
+            [0.0],
+            [0.1],
+            [[]],
+            [['foo' => 'bar']],
+            [new \stdClass()],
+        ];
     }
 }

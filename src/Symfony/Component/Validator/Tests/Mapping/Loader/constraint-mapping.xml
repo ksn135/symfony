@@ -2,11 +2,11 @@
 
 <constraint-mapping xmlns="http://symfony.com/schema/dic/constraint-mapping"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://symfony.com/schema/dic/constraint-mapping http://symfony.com/schema/dic/constraint-mapping/constraint-mapping-1.0.xsd">
+    xsi:schemaLocation="http://symfony.com/schema/dic/constraint-mapping https://symfony.com/schema/dic/constraint-mapping/constraint-mapping-1.0.xsd">
 
   <namespace prefix="custom">Symfony\Component\Validator\Tests\Fixtures\</namespace>
 
-  <class name="Symfony\Component\Validator\Tests\Fixtures\Entity">
+  <class name="Symfony\Component\Validator\Tests\Fixtures\NestedAttribute\Entity">
 
     <group-sequence>
        <value>Foo</value>
@@ -29,6 +29,11 @@
     <constraint name="Callback">
         <value>Symfony\Component\Validator\Tests\Fixtures\CallbackClass</value>
         <value>callback</value>
+    </constraint>
+
+    <!-- Traverse with boolean default option -->
+    <constraint name="Traverse">
+        false
     </constraint>
 
     <!-- PROPERTY CONSTRAINTS -->
@@ -103,17 +108,23 @@
       <constraint name="NotNull" />
     </getter>
     <getter property="valid">
-      <constraint name="True" />
+      <constraint name="IsTrue" />
     </getter>
     <getter property="permissions">
-      <constraint name="True" />
+      <constraint name="IsTrue" />
     </getter>
   </class>
 
-  <class name="Symfony\Component\Validator\Tests\Fixtures\GroupSequenceProviderEntity">
+  <class name="Symfony\Component\Validator\Tests\Fixtures\NestedAttribute\GroupSequenceProviderEntity">
 
     <!-- GROUP SEQUENCE PROVIDER -->
     <group-sequence-provider />
 
+  </class>
+
+  <class name="Symfony\Component\Validator\Tests\Fixtures\Attribute\GroupProviderDto">
+    <group-sequence-provider>
+      <value>Symfony\Component\Validator\Tests\Dummy\DummyGroupProvider</value>
+    </group-sequence-provider>
   </class>
 </constraint-mapping>

@@ -11,19 +11,28 @@
 
 namespace Symfony\Component\Security\Core\Tests\Authentication\RememberMe;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Security\Core\Authentication\RememberMe\PersistentToken;
 
-class PersistentTokenTest extends \PHPUnit_Framework_TestCase
+class PersistentTokenTest extends TestCase
 {
     public function testConstructor()
+    {
+        $lastUsed = new \DateTimeImmutable();
+        $token = new PersistentToken('fooclass', 'fooname', 'fooseries', 'footokenvalue', $lastUsed);
+
+        $this->assertEquals('fooclass', $token->getClass());
+        $this->assertEquals('fooname', $token->getUserIdentifier());
+        $this->assertEquals('fooseries', $token->getSeries());
+        $this->assertEquals('footokenvalue', $token->getTokenValue());
+        $this->assertEquals($lastUsed, $token->getLastUsed());
+    }
+
+    public function testDateTime()
     {
         $lastUsed = new \DateTime();
         $token = new PersistentToken('fooclass', 'fooname', 'fooseries', 'footokenvalue', $lastUsed);
 
-        $this->assertEquals('fooclass', $token->getClass());
-        $this->assertEquals('fooname', $token->getUsername());
-        $this->assertEquals('fooseries', $token->getSeries());
-        $this->assertEquals('footokenvalue', $token->getTokenValue());
-        $this->assertSame($lastUsed, $token->getLastUsed());
+        $this->assertEquals($lastUsed, $token->getLastUsed());
     }
 }

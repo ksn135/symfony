@@ -12,39 +12,35 @@
 namespace Symfony\Bridge\Monolog\Handler;
 
 use Monolog\Handler\FirePHPHandler as BaseFirePHPHandler;
-use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
 
 /**
  * FirePHPHandler.
  *
  * @author Jordi Boggiano <j.boggiano@seld.be>
+ *
+ * @final
  */
 class FirePHPHandler extends BaseFirePHPHandler
 {
-    /**
-     * @var array
-     */
-    private $headers = array();
+    private array $headers = [];
+    private ?Response $response = null;
 
     /**
-     * @var Response
+     * Adds the headers to the response once it's created.
      */
-    private $response;
-
-    /**
-     * Adds the headers to the response once it's created
-     */
-    public function onKernelResponse(FilterResponseEvent $event)
+    public function onKernelResponse(ResponseEvent $event): void
     {
-        if (!$event->isMasterRequest()) {
+        if (!$event->isMainRequest()) {
             return;
         }
 
-        if (!preg_match('{\bFirePHP/\d+\.\d+\b}', $event->getRequest()->headers->get('User-Agent'))
-            && !$event->getRequest()->headers->has('X-FirePHP-Version')) {
-            $this->sendHeaders = false;
-            $this->headers = array();
+        $request = $event->getRequest();
+        if (!preg_match('{\bFirePHP/\d+\.\d+\b}', $request->headers->get('User-Agent', ''))
+            && !$request->headers->has('X-FirePHP-Version')) {
+            self::$sendHeaders = false;
+            $this->headers = [];
 
             return;
         }
@@ -53,19 +49,16 @@ class FirePHPHandler extends BaseFirePHPHandler
         foreach ($this->headers as $header => $content) {
             $this->response->headers->set($header, $content);
         }
-        $this->headers = array();
+        $this->headers = [];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function sendHeader($header, $content)
+    protected function sendHeader($header, $content): void
     {
-        if (!$this->sendHeaders) {
+        if (!self::$sendHeaders) {
             return;
         }
 
-        if ($this->response) {
+        if (null !== $this->response) {
             $this->response->headers->set($header, $content);
         } else {
             $this->headers[$header] = $content;
@@ -73,9 +66,9 @@ class FirePHPHandler extends BaseFirePHPHandler
     }
 
     /**
-     * Override default behavior since we check the user agent in onKernelResponse
+     * Override default behavior since we check the user agent in onKernelResponse.
      */
-    protected function headersAccepted()
+    protected function headersAccepted(): bool
     {
         return true;
     }

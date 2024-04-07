@@ -12,10 +12,9 @@
 namespace Symfony\Bundle\SecurityBundle\DependencyInjection\Security\UserProvider;
 
 use Symfony\Component\Config\Definition\Builder\NodeDefinition;
-
-use Symfony\Component\DependencyInjection\DefinitionDecorator;
+use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\DependencyInjection\Parameter;
 
 /**
  * InMemoryFactory creates services for the memory provider.
@@ -25,39 +24,37 @@ use Symfony\Component\DependencyInjection\Reference;
  */
 class InMemoryFactory implements UserProviderFactoryInterface
 {
-    public function create(ContainerBuilder $container, $id, $config)
+    public function create(ContainerBuilder $container, string $id, array $config): void
     {
-        $definition = $container->setDefinition($id, new DefinitionDecorator('security.user.provider.in_memory'));
+        $definition = $container->setDefinition($id, new ChildDefinition('security.user.provider.in_memory'));
+        $defaultPassword = new Parameter('container.build_id');
+        $users = [];
 
         foreach ($config['users'] as $username => $user) {
-            $userId = $id.'_'.$username;
-
-            $container
-                ->setDefinition($userId, new DefinitionDecorator('security.user.provider.in_memory.user'))
-                ->setArguments(array($username, (string) $user['password'], $user['roles']))
-            ;
-
-            $definition->addMethodCall('createUser', array(new Reference($userId)));
+            $users[$username] = ['password' => null !== $user['password'] ? (string) $user['password'] : $defaultPassword, 'roles' => $user['roles']];
         }
+
+        $definition->addArgument($users);
     }
 
-    public function getKey()
+    public function getKey(): string
     {
         return 'memory';
     }
 
-    public function addConfiguration(NodeDefinition $node)
+    public function addConfiguration(NodeDefinition $node): void
     {
         $node
             ->fixXmlConfig('user')
             ->children()
                 ->arrayNode('users')
-                    ->useAttributeAsKey('name')
+                    ->useAttributeAsKey('identifier')
+                    ->normalizeKeys(false)
                     ->prototype('array')
                         ->children()
-                            ->scalarNode('password')->defaultValue(uniqid())->end()
+                            ->scalarNode('password')->defaultNull()->end()
                             ->arrayNode('roles')
-                                ->beforeNormalization()->ifString()->then(function ($v) { return preg_split('/\s*,\s*/', $v); })->end()
+                                ->beforeNormalization()->ifString()->then(fn ($v) => preg_split('/\s*,\s*/', $v))->end()
                                 ->prototype('scalar')->end()
                             ->end()
                         ->end()

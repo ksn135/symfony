@@ -12,18 +12,16 @@
 namespace Symfony\Component\Validator\Mapping\Loader;
 
 /**
- * Loads multiple xml mapping files
+ * Loads validation metadata from a list of XML files.
  *
  * @author Bulat Shakirzyanov <mallluhuct@gmail.com>
+ * @author Bernhard Schussek <bschussek@gmail.com>
  *
- * @see    Symfony\Component\Validator\Mapping\Loader\FilesLoader
+ * @see FilesLoader
  */
 class XmlFilesLoader extends FilesLoader
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function getFileLoaderInstance($file)
+    public function getFileLoaderInstance(string $file): LoaderInterface
     {
         return new XmlFileLoader($file);
     }

@@ -11,24 +11,35 @@
 
 namespace Symfony\Bundle\SecurityBundle\Tests\Functional\Bundle\CsrfFormLoginBundle\Controller;
 
-use Symfony\Component\DependencyInjection\ContainerAware;
+use Psr\Container\ContainerInterface;
+use Symfony\Bundle\SecurityBundle\Tests\Functional\Bundle\CsrfFormLoginBundle\Form\UserLoginType;
+use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Contracts\Service\ServiceSubscriberInterface;
+use Twig\Environment;
 
-class LoginController extends ContainerAware
+class LoginController implements ServiceSubscriberInterface
 {
+    private ContainerInterface $container;
+
+    public function __construct(ContainerInterface $container)
+    {
+        $this->container = $container;
+    }
+
     public function loginAction()
     {
-        $form = $this->container->get('form.factory')->create('user_login');
+        $form = $this->container->get('form.factory')->create(UserLoginType::class);
 
-        return $this->container->get('templating')->renderResponse('CsrfFormLoginBundle:Login:login.html.twig', array(
+        return new Response($this->container->get('twig')->render('@CsrfFormLogin/Login/login.html.twig', [
             'form' => $form->createView(),
-        ));
+        ]));
     }
 
     public function afterLoginAction()
     {
-        return $this->container->get('templating')->renderResponse('CsrfFormLoginBundle:Login:after_login.html.twig');
+        return new Response($this->container->get('twig')->render('@CsrfFormLogin/Login/after_login.html.twig'));
     }
 
     public function loginCheckAction()
@@ -39,5 +50,13 @@ class LoginController extends ContainerAware
     public function secureAction()
     {
         throw new \Exception('Wrapper', 0, new \Exception('Another Wrapper', 0, new AccessDeniedException()));
+    }
+
+    public static function getSubscribedServices(): array
+    {
+        return [
+            'form.factory' => FormFactoryInterface::class,
+            'twig' => Environment::class,
+        ];
     }
 }

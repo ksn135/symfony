@@ -14,34 +14,63 @@ namespace Symfony\Component\Validator\Constraints;
 use Symfony\Component\Validator\Constraint;
 
 /**
- * Metadata for the CardSchemeValidator.
- *
- * @Annotation
- * @Target({"PROPERTY", "METHOD", "ANNOTATION"})
+ * Validates a credit card number for a given credit card company.
  *
  * @author Tim Nagel <t.nagel@infinite.net.au>
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
+#[\Attribute(\Attribute::TARGET_PROPERTY | \Attribute::TARGET_METHOD | \Attribute::IS_REPEATABLE)]
 class CardScheme extends Constraint
 {
-    const NOT_NUMERIC_ERROR = 1;
-    const INVALID_FORMAT_ERROR = 2;
+    public const AMEX = 'AMEX';
+    public const CHINA_UNIONPAY = 'CHINA_UNIONPAY';
+    public const DINERS = 'DINERS';
+    public const DISCOVER = 'DISCOVER';
+    public const INSTAPAYMENT = 'INSTAPAYMENT';
+    public const JCB = 'JCB';
+    public const LASER = 'LASER';
+    public const MAESTRO = 'MAESTRO';
+    public const MASTERCARD = 'MASTERCARD';
+    public const MIR = 'MIR';
+    public const UATP = 'UATP';
+    public const VISA = 'VISA';
 
-    protected static $errorNames = array(
+    public const NOT_NUMERIC_ERROR = 'a2ad9231-e827-485f-8a1e-ef4d9a6d5c2e';
+    public const INVALID_FORMAT_ERROR = 'a8faedbf-1c2f-4695-8d22-55783be8efed';
+
+    protected const ERROR_NAMES = [
         self::NOT_NUMERIC_ERROR => 'NOT_NUMERIC_ERROR',
         self::INVALID_FORMAT_ERROR => 'INVALID_FORMAT_ERROR',
-    );
+    ];
 
-    public $message = 'Unsupported card type or invalid card number.';
-    public $schemes;
+    public string $message = 'Unsupported card type or invalid card number.';
+    public array|string|null $schemes = null;
 
-    public function getDefaultOption()
+    /**
+     * @param string|string[]|array<string,mixed>|null $schemes Name(s) of the number scheme(s) used to validate the credit card number
+     * @param string[]|null                            $groups
+     * @param array<string,mixed>                      $options
+     */
+    public function __construct(array|string|null $schemes, ?string $message = null, ?array $groups = null, mixed $payload = null, array $options = [])
+    {
+        if (\is_array($schemes) && \is_string(key($schemes))) {
+            $options = array_merge($schemes, $options);
+        } else {
+            $options['value'] = $schemes;
+        }
+
+        parent::__construct($options, $groups, $payload);
+
+        $this->message = $message ?? $this->message;
+    }
+
+    public function getDefaultOption(): ?string
     {
         return 'schemes';
     }
 
-    public function getRequiredOptions()
+    public function getRequiredOptions(): array
     {
-        return array('schemes');
+        return ['schemes'];
     }
 }

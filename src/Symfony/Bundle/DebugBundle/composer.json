@@ -1,9 +1,9 @@
 {
     "name": "symfony/debug-bundle",
     "type": "symfony-bundle",
-    "description": "Symfony DebugBundle",
+    "description": "Provides a tight integration of the Symfony VarDumper component and the ServerLogCommand from MonologBridge into the Symfony full-stack framework",
     "keywords": [],
-    "homepage": "http://symfony.com",
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {
@@ -12,31 +12,30 @@
         },
         {
             "name": "Symfony Community",
-            "homepage": "http://symfony.com/contributors"
+            "homepage": "https://symfony.com/contributors"
         }
     ],
     "require": {
-        "php": ">=5.3.3",
-        "symfony/http-kernel": "~2.6",
-        "symfony/twig-bridge": "~2.6",
-        "symfony/var-dumper": "~2.6"
+        "php": ">=8.2",
+        "ext-xml": "*",
+        "symfony/dependency-injection": "^6.4|^7.0",
+        "symfony/http-kernel": "^6.4|^7.0",
+        "symfony/twig-bridge": "^6.4|^7.0",
+        "symfony/var-dumper": "^6.4|^7.0"
     },
     "require-dev": {
-        "symfony/config": "~2.3",
-        "symfony/dependency-injection": "~2.3"
+        "symfony/config": "^6.4|^7.0",
+        "symfony/web-profiler-bundle": "^6.4|^7.0"
     },
-    "suggest": {
-        "symfony/config": "For service container configuration",
-        "symfony/dependency-injection": "For using as a service from the container"
+    "conflict": {
+        "symfony/config": "<6.4",
+        "symfony/dependency-injection": "<6.4"
     },
     "autoload": {
-        "psr-0": { "Symfony\\Bundle\\DebugBundle\\": "" }
+        "psr-4": { "Symfony\\Bundle\\DebugBundle\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
     },
-    "target-dir": "Symfony/Bundle/DebugBundle",
-    "minimum-stability": "dev",
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev"
-        }
-    }
+    "minimum-stability": "dev"
 }

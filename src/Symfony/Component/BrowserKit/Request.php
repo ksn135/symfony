@@ -12,126 +12,87 @@
 namespace Symfony\Component\BrowserKit;
 
 /**
- * Request object.
- *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 class Request
 {
-    protected $uri;
-    protected $method;
-    protected $parameters;
-    protected $files;
-    protected $cookies;
-    protected $server;
-    protected $content;
-
     /**
-     * Constructor.
-     *
-     * @param string $uri        The request URI
-     * @param string $method     The HTTP method request
-     * @param array  $parameters The request parameters
-     * @param array  $files      An array of uploaded files
-     * @param array  $cookies    An array of cookies
-     * @param array  $server     An array of server parameters
-     * @param string $content    The raw body data
-     *
-     * @api
+     * @param string      $uri        The request URI
+     * @param string      $method     The HTTP method request
+     * @param array       $parameters The request parameters
+     * @param array       $files      An array of uploaded files
+     * @param array       $cookies    An array of cookies
+     * @param array       $server     An array of server parameters
+     * @param string|null $content    The raw body data
      */
-    public function __construct($uri, $method, array $parameters = array(), array $files = array(), array $cookies = array(), array $server = array(), $content = null)
-    {
-        $this->uri = $uri;
-        $this->method = $method;
+    public function __construct(
+        protected string $uri,
+        protected string $method,
+        protected array $parameters = [],
+        protected array $files = [],
+        protected array $cookies = [],
+        protected array $server = [],
+        protected ?string $content = null,
+    ) {
+        array_walk_recursive($parameters, static function (&$value) {
+            $value = (string) $value;
+        });
+
         $this->parameters = $parameters;
-        $this->files = $files;
-        $this->cookies = $cookies;
-        $this->server = $server;
-        $this->content = $content;
     }
 
     /**
      * Gets the request URI.
-     *
-     * @return string The request URI
-     *
-     * @api
      */
-    public function getUri()
+    public function getUri(): string
     {
         return $this->uri;
     }
 
     /**
      * Gets the request HTTP method.
-     *
-     * @return string The request HTTP method
-     *
-     * @api
      */
-    public function getMethod()
+    public function getMethod(): string
     {
         return $this->method;
     }
 
     /**
      * Gets the request parameters.
-     *
-     * @return array The request parameters
-     *
-     * @api
      */
-    public function getParameters()
+    public function getParameters(): array
     {
         return $this->parameters;
     }
 
     /**
      * Gets the request server files.
-     *
-     * @return array The request files
-     *
-     * @api
      */
-    public function getFiles()
+    public function getFiles(): array
     {
         return $this->files;
     }
 
     /**
      * Gets the request cookies.
-     *
-     * @return array The request cookies
-     *
-     * @api
      */
-    public function getCookies()
+    public function getCookies(): array
     {
         return $this->cookies;
     }
 
     /**
      * Gets the request server parameters.
-     *
-     * @return array The request server parameters
-     *
-     * @api
      */
-    public function getServer()
+    public function getServer(): array
     {
         return $this->server;
     }
 
     /**
      * Gets the request raw body data.
-     *
-     * @return string The request raw body data.
-     *
-     * @api
      */
-    public function getContent()
+    public function getContent(): ?string
     {
         return $this->content;
     }

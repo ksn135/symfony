@@ -11,8 +11,9 @@
 
 namespace Symfony\Component\Security\Http\Session;
 
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Csrf\TokenStorage\ClearableTokenStorageInterface;
 
 /**
  * The default session strategy implementation.
@@ -26,28 +27,31 @@ use Symfony\Component\HttpFoundation\Request;
  */
 class SessionAuthenticationStrategy implements SessionAuthenticationStrategyInterface
 {
-    const NONE = 'none';
-    const MIGRATE = 'migrate';
-    const INVALIDATE = 'invalidate';
+    public const NONE = 'none';
+    public const MIGRATE = 'migrate';
+    public const INVALIDATE = 'invalidate';
 
-    private $strategy;
+    private string $strategy;
+    private ?ClearableTokenStorageInterface $csrfTokenStorage = null;
 
-    public function __construct($strategy)
+    public function __construct(string $strategy, ?ClearableTokenStorageInterface $csrfTokenStorage = null)
     {
         $this->strategy = $strategy;
+
+        if (self::MIGRATE === $strategy) {
+            $this->csrfTokenStorage = $csrfTokenStorage;
+        }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function onAuthentication(Request $request, TokenInterface $token)
+    public function onAuthentication(Request $request, TokenInterface $token): void
     {
         switch ($this->strategy) {
             case self::NONE:
                 return;
 
             case self::MIGRATE:
-                $request->getSession()->migrate();
+                $request->getSession()->migrate(true);
+                $this->csrfTokenStorage?->clear();
 
                 return;
 
@@ -57,7 +61,7 @@ class SessionAuthenticationStrategy implements SessionAuthenticationStrategyInte
                 return;
 
             default:
-                throw new \RuntimeException(sprintf('Invalid session authentication strategy "%s"', $this->strategy));
+                throw new \RuntimeException(sprintf('Invalid session authentication strategy "%s".', $this->strategy));
         }
     }
 }

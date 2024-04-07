@@ -18,14 +18,11 @@ use Symfony\Component\Security\Core\Exception\TokenNotFoundException;
  *
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
  */
-class InMemoryTokenProvider implements TokenProviderInterface
+final class InMemoryTokenProvider implements TokenProviderInterface
 {
-    private $tokens = array();
+    private array $tokens = [];
 
-    /**
-     * {@inheritdoc}
-     */
-    public function loadTokenBySeries($series)
+    public function loadTokenBySeries(string $series): PersistentTokenInterface
     {
         if (!isset($this->tokens[$series])) {
             throw new TokenNotFoundException('No token found.');
@@ -34,10 +31,7 @@ class InMemoryTokenProvider implements TokenProviderInterface
         return $this->tokens[$series];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function updateToken($series, $tokenValue, \DateTime $lastUsed)
+    public function updateToken(string $series, #[\SensitiveParameter] string $tokenValue, \DateTimeInterface $lastUsed): void
     {
         if (!isset($this->tokens[$series])) {
             throw new TokenNotFoundException('No token found.');
@@ -45,7 +39,7 @@ class InMemoryTokenProvider implements TokenProviderInterface
 
         $token = new PersistentToken(
             $this->tokens[$series]->getClass(),
-            $this->tokens[$series]->getUsername(),
+            $this->tokens[$series]->getUserIdentifier(),
             $series,
             $tokenValue,
             $lastUsed
@@ -53,18 +47,12 @@ class InMemoryTokenProvider implements TokenProviderInterface
         $this->tokens[$series] = $token;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function deleteTokenBySeries($series)
+    public function deleteTokenBySeries(string $series): void
     {
         unset($this->tokens[$series]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function createNewToken(PersistentTokenInterface $token)
+    public function createNewToken(PersistentTokenInterface $token): void
     {
         $this->tokens[$token->getSeries()] = $token;
     }

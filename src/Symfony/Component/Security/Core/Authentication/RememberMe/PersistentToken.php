@@ -12,88 +12,62 @@
 namespace Symfony\Component\Security\Core\Authentication\RememberMe;
 
 /**
- * This class is only used by PersistentTokenRememberMeServices internally.
- *
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
+ *
+ * @internal
  */
 final class PersistentToken implements PersistentTokenInterface
 {
-    private $class;
-    private $username;
-    private $series;
-    private $tokenValue;
-    private $lastUsed;
+    private string $class;
+    private string $userIdentifier;
+    private string $series;
+    private string $tokenValue;
+    private \DateTimeImmutable $lastUsed;
 
-    /**
-     * Constructor
-     *
-     * @param string    $class
-     * @param string    $username
-     * @param string    $series
-     * @param string    $tokenValue
-     * @param \DateTime $lastUsed
-     *
-     * @throws \InvalidArgumentException
-     */
-    public function __construct($class, $username, $series, $tokenValue, \DateTime $lastUsed)
+    public function __construct(string $class, string $userIdentifier, string $series, #[\SensitiveParameter] string $tokenValue, \DateTimeInterface $lastUsed)
     {
-        if (empty($class)) {
+        if (!$class) {
             throw new \InvalidArgumentException('$class must not be empty.');
         }
-        if (empty($username)) {
-            throw new \InvalidArgumentException('$username must not be empty.');
+        if ('' === $userIdentifier) {
+            throw new \InvalidArgumentException('$userIdentifier must not be empty.');
         }
-        if (empty($series)) {
+        if (!$series) {
             throw new \InvalidArgumentException('$series must not be empty.');
         }
-        if (empty($tokenValue)) {
+        if (!$tokenValue) {
             throw new \InvalidArgumentException('$tokenValue must not be empty.');
         }
 
         $this->class = $class;
-        $this->username = $username;
+        $this->userIdentifier = $userIdentifier;
         $this->series = $series;
         $this->tokenValue = $tokenValue;
-        $this->lastUsed = $lastUsed;
+        $this->lastUsed = \DateTimeImmutable::createFromInterface($lastUsed);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getClass()
+    public function getClass(): string
     {
         return $this->class;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getUsername()
+    public function getUserIdentifier(): string
     {
-        return $this->username;
+        return $this->userIdentifier;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getSeries()
+    public function getSeries(): string
     {
         return $this->series;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getTokenValue()
+    public function getTokenValue(): string
     {
         return $this->tokenValue;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getLastUsed()
+    public function getLastUsed(): \DateTime
     {
-        return $this->lastUsed;
+        return \DateTime::createFromImmutable($this->lastUsed);
     }
 }

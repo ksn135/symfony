@@ -11,40 +11,33 @@
 
 namespace Symfony\Component\HttpFoundation\Tests\Session\Storage;
 
-use Symfony\Component\HttpFoundation\Session\Storage\MockFileSessionStorage;
-use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Session\Attribute\AttributeBag;
+use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
+use Symfony\Component\HttpFoundation\Session\Storage\MockFileSessionStorage;
 
 /**
  * Test class for MockFileSessionStorage.
  *
  * @author Drak <drak@zikula.org>
  */
-class MockFileSessionStorageTest extends \PHPUnit_Framework_TestCase
+class MockFileSessionStorageTest extends TestCase
 {
-    /**
-     * @var string
-     */
-    private $sessionDir;
+    protected MockFileSessionStorage $storage;
 
-    /**
-     * @var FileMockSessionStorage
-     */
-    protected $storage;
+    private string $sessionDir;
 
-    protected function setUp()
+    protected function setUp(): void
     {
-        $this->sessionDir = sys_get_temp_dir().'/sf2test';
+        $this->sessionDir = sys_get_temp_dir().'/sftest';
         $this->storage = $this->getStorage();
     }
 
-    protected function tearDown()
+    protected function tearDown(): void
     {
-        $this->sessionDir = null;
-        $this->storage = null;
-        array_map('unlink', glob($this->sessionDir.'/*.session'));
+        array_map('unlink', glob($this->sessionDir.'/*'));
         if (is_dir($this->sessionDir)) {
-            rmdir($this->sessionDir);
+            @rmdir($this->sessionDir);
         }
     }
 
@@ -90,7 +83,7 @@ class MockFileSessionStorageTest extends \PHPUnit_Framework_TestCase
         $storage->start();
         $this->assertEquals('108', $storage->getBag('attributes')->get('new'));
         $this->assertTrue($storage->getBag('flashes')->has('newkey'));
-        $this->assertEquals(array('test'), $storage->getBag('flashes')->peek('newkey'));
+        $this->assertEquals(['test'], $storage->getBag('flashes')->peek('newkey'));
     }
 
     public function testMultipleInstances()
@@ -106,16 +99,14 @@ class MockFileSessionStorageTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('bar', $storage2->getBag('attributes')->get('foo'), 'values persist between instances');
     }
 
-    /**
-     * @expectedException \RuntimeException
-     */
     public function testSaveWithoutStart()
     {
+        $this->expectException(\RuntimeException::class);
         $storage1 = $this->getStorage();
         $storage1->save();
     }
 
-    private function getStorage()
+    private function getStorage(): MockFileSessionStorage
     {
         $storage = new MockFileSessionStorage($this->sessionDir);
         $storage->registerBag(new FlashBag());

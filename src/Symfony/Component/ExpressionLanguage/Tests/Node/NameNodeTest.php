@@ -13,19 +13,26 @@ namespace Symfony\Component\ExpressionLanguage\Tests\Node;
 
 use Symfony\Component\ExpressionLanguage\Node\NameNode;
 
-class NameNodeTest extends AbstractNodeTest
+class NameNodeTest extends AbstractNodeTestCase
 {
-    public function getEvaluateData()
+    public static function getEvaluateData(): array
     {
-        return array(
-            array('bar', new NameNode('foo'), array('foo' => 'bar')),
-        );
+        return [
+            ['bar', new NameNode('foo'), ['foo' => 'bar']],
+        ];
     }
 
-    public function getCompileData()
+    public static function getCompileData(): array
     {
-        return array(
-            array('$foo', new NameNode('foo')),
-        );
+        return [
+            ['$foo', new NameNode('foo')],
+        ];
+    }
+
+    public static function getDumpData(): array
+    {
+        return [
+            ['foo', new NameNode('foo')],
+        ];
     }
 }

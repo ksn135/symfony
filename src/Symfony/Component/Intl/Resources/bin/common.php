@@ -9,39 +9,49 @@
  * file that was distributed with this source code.
  */
 
+if ('cli' !== \PHP_SAPI) {
+    throw new Exception('This script must be run from the command line.');
+}
+
 define('LINE_WIDTH', 75);
 
 define('LINE', str_repeat('-', LINE_WIDTH)."\n");
 
-function bailout($message)
+function bailout(string $message)
 {
     echo wordwrap($message, LINE_WIDTH)." Aborting.\n";
 
     exit(1);
 }
 
-function strip_minor_versions($version)
+/**
+ * @return string
+ */
+function strip_minor_versions(string $version)
 {
     preg_match('/^(?P<version>[0-9]\.[0-9]|[0-9]{2,})/', $version, $matches);
 
     return $matches['version'];
 }
 
-function centered($text)
+/**
+ * @return string
+ */
+function centered(string $text)
 {
-    $padding = (int) ((LINE_WIDTH - strlen($text))/2);
+    $padding = (int) ((LINE_WIDTH - strlen($text)) / 2);
 
     return str_repeat(' ', $padding).$text;
 }
 
-function cd($dir)
+function cd(string $dir): void
 {
     if (false === chdir($dir)) {
         bailout("Could not switch to directory $dir.");
     }
 }
 
-function run($command)
+function run(string $command): void
 {
     exec($command, $output, $status);
 
@@ -53,22 +63,31 @@ function run($command)
     }
 }
 
-function get_icu_version_from_genrb($genrb)
+/**
+ * @return string|null
+ */
+function get_icu_version_from_genrb(string $genrb)
 {
-    exec($genrb.' --version 2>&1', $output, $status);
+    exec($genrb.' --version - 2>&1', $output, $status);
 
     if (0 !== $status) {
         bailout($genrb.' failed.');
     }
 
     if (!preg_match('/ICU version ([\d\.]+)/', implode('', $output), $matches)) {
-        return;
+        return null;
     }
 
     return $matches[1];
 }
 
-set_exception_handler(function (\Exception $exception) {
+error_reporting(\E_ALL);
+
+set_error_handler(function (int $type, string $msg, string $file, int $line) {
+    throw new ErrorException($msg, 0, $type, $file, $line);
+});
+
+set_exception_handler(function (Throwable $exception) {
     echo "\n";
 
     $cause = $exception;
@@ -79,13 +98,10 @@ set_exception_handler(function (\Exception $exception) {
             echo "Caused by\n";
         }
 
-        echo get_class($cause).": ".$cause->getMessage()."\n";
+        echo $cause::class.': '.$cause->getMessage()."\n";
         echo "\n";
-        echo $cause->getFile().":".$cause->getLine()."\n";
-        foreach ($cause->getTrace() as $trace) {
-            echo $trace['file'].":".$trace['line']."\n";
-        }
-        echo "\n";
+        echo $cause->getFile().':'.$cause->getLine()."\n";
+        echo $cause->getTraceAsString()."\n";
 
         $cause = $cause->getPrevious();
         $root = false;

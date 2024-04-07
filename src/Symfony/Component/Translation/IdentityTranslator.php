@@ -11,67 +11,16 @@
 
 namespace Symfony\Component\Translation;
 
+use Symfony\Contracts\Translation\LocaleAwareInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
+use Symfony\Contracts\Translation\TranslatorTrait;
+
 /**
  * IdentityTranslator does not translate anything.
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
-class IdentityTranslator implements TranslatorInterface
+class IdentityTranslator implements TranslatorInterface, LocaleAwareInterface
 {
-    private $selector;
-    private $locale;
-
-    /**
-     * Constructor.
-     *
-     * @param MessageSelector|null $selector The message selector for pluralization
-     *
-     * @api
-     */
-    public function __construct(MessageSelector $selector = null)
-    {
-        $this->selector = $selector ?: new MessageSelector();
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function setLocale($locale)
-    {
-        $this->locale = $locale;
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function getLocale()
-    {
-        return $this->locale ?: \Locale::getDefault();
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function trans($id, array $parameters = array(), $domain = null, $locale = null)
-    {
-        return strtr((string) $id, $parameters);
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function transChoice($id, $number, array $parameters = array(), $domain = null, $locale = null)
-    {
-        return strtr($this->selector->choose((string) $id, (int) $number, $locale ?: $this->getLocale()), $parameters);
-    }
+    use TranslatorTrait;
 }

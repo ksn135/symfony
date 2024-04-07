@@ -15,33 +15,33 @@ use Symfony\Component\CssSelector\Node\ElementNode;
 use Symfony\Component\CssSelector\Node\FunctionNode;
 use Symfony\Component\CssSelector\Parser\Token;
 
-class FunctionNodeTest extends AbstractNodeTest
+class FunctionNodeTest extends AbstractNodeTestCase
 {
-    public function getToStringConversionTestData()
+    public static function getToStringConversionTestData()
     {
-        return array(
-            array(new FunctionNode(new ElementNode(), 'function'), 'Function[Element[*]:function()]'),
-            array(new FunctionNode(new ElementNode(), 'function', array(
+        return [
+            [new FunctionNode(new ElementNode(), 'function'), 'Function[Element[*]:function()]'],
+            [new FunctionNode(new ElementNode(), 'function', [
                 new Token(Token::TYPE_IDENTIFIER, 'value', 0),
-            )), "Function[Element[*]:function(['value'])]"),
-            array(new FunctionNode(new ElementNode(), 'function', array(
+            ]), "Function[Element[*]:function(['value'])]"],
+            [new FunctionNode(new ElementNode(), 'function', [
                 new Token(Token::TYPE_STRING, 'value1', 0),
                 new Token(Token::TYPE_NUMBER, 'value2', 0),
-            )), "Function[Element[*]:function(['value1', 'value2'])]"),
-        );
+            ]), "Function[Element[*]:function(['value1', 'value2'])]"],
+        ];
     }
 
-    public function getSpecificityValueTestData()
+    public static function getSpecificityValueTestData()
     {
-        return array(
-            array(new FunctionNode(new ElementNode(), 'function'), 10),
-            array(new FunctionNode(new ElementNode(), 'function', array(
+        return [
+            [new FunctionNode(new ElementNode(), 'function'), 10],
+            [new FunctionNode(new ElementNode(), 'function', [
                 new Token(Token::TYPE_IDENTIFIER, 'value', 0),
-            )), 10),
-            array(new FunctionNode(new ElementNode(), 'function', array(
+            ]), 10],
+            [new FunctionNode(new ElementNode(), 'function', [
                 new Token(Token::TYPE_STRING, 'value1', 0),
                 new Token(Token::TYPE_NUMBER, 'value2', 0),
-            )), 10),
-        );
+            ]), 10],
+        ];
     }
 }

@@ -11,50 +11,73 @@
 
 namespace Symfony\Component\DependencyInjection\Tests\ParameterBag;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Bridge\PhpUnit\ExpectDeprecationTrait;
 use Symfony\Component\DependencyInjection\ParameterBag\FrozenParameterBag;
 
-class FrozenParameterBagTest extends \PHPUnit_Framework_TestCase
+class FrozenParameterBagTest extends TestCase
 {
-    /**
-     * @covers Symfony\Component\DependencyInjection\ParameterBag\FrozenParameterBag::__construct
-     */
+    use ExpectDeprecationTrait;
+
     public function testConstructor()
     {
-        $parameters = array(
+        $parameters = [
             'foo' => 'foo',
             'bar' => 'bar',
-        );
+        ];
         $bag = new FrozenParameterBag($parameters);
         $this->assertEquals($parameters, $bag->all(), '__construct() takes an array of parameters as its first argument');
     }
 
-    /**
-     * @covers Symfony\Component\DependencyInjection\ParameterBag\FrozenParameterBag::clear
-     * @expectedException \LogicException
-     */
     public function testClear()
     {
-        $bag = new FrozenParameterBag(array());
+        $this->expectException(\LogicException::class);
+        $bag = new FrozenParameterBag([]);
         $bag->clear();
     }
 
-    /**
-     * @covers Symfony\Component\DependencyInjection\ParameterBag\FrozenParameterBag::set
-     * @expectedException \LogicException
-     */
     public function testSet()
     {
-        $bag = new FrozenParameterBag(array());
+        $this->expectException(\LogicException::class);
+        $bag = new FrozenParameterBag([]);
         $bag->set('foo', 'bar');
     }
 
-    /**
-     * @covers Symfony\Component\DependencyInjection\ParameterBag\FrozenParameterBag::add
-     * @expectedException \LogicException
-     */
     public function testAdd()
     {
-        $bag = new FrozenParameterBag(array());
-        $bag->add(array());
+        $this->expectException(\LogicException::class);
+        $bag = new FrozenParameterBag([]);
+        $bag->add([]);
+    }
+
+    public function testRemove()
+    {
+        $this->expectException(\LogicException::class);
+        $bag = new FrozenParameterBag(['foo' => 'bar']);
+        $bag->remove('foo');
+    }
+
+    public function testDeprecate()
+    {
+        $this->expectException(\LogicException::class);
+        $bag = new FrozenParameterBag(['foo' => 'bar']);
+        $bag->deprecate('foo', 'symfony/test', '6.3');
+    }
+
+    /**
+     * The test should be kept in the group as it always expects a deprecation.
+     *
+     * @group legacy
+     */
+    public function testGetDeprecated()
+    {
+        $bag = new FrozenParameterBag(
+            ['foo' => 'bar'],
+            ['foo' => ['symfony/test', '6.3', 'The parameter "%s" is deprecated.', 'foo']]
+        );
+
+        $this->expectDeprecation('Since symfony/test 6.3: The parameter "foo" is deprecated.');
+
+        $bag->get('foo');
     }
 }

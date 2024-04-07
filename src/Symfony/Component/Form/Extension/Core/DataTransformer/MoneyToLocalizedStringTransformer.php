@@ -21,44 +21,35 @@ use Symfony\Component\Form\Exception\TransformationFailedException;
  */
 class MoneyToLocalizedStringTransformer extends NumberToLocalizedStringTransformer
 {
-    private $divisor;
+    private int $divisor;
 
-    public function __construct($precision = 2, $grouping = true, $roundingMode = self::ROUND_HALF_UP, $divisor = 1)
-    {
-        if (null === $grouping) {
-            $grouping = true;
-        }
+    public function __construct(
+        ?int $scale = 2,
+        ?bool $grouping = true,
+        ?int $roundingMode = \NumberFormatter::ROUND_HALFUP,
+        ?int $divisor = 1,
+        ?string $locale = null,
+        private string $modelType = 'float',
+    ) {
+        parent::__construct($scale ?? 2, $grouping ?? true, $roundingMode, $locale);
 
-        if (null === $precision) {
-            $precision = 2;
-        }
-
-        parent::__construct($precision, $grouping, $roundingMode);
-
-        if (null === $divisor) {
-            $divisor = 1;
-        }
-
-        $this->divisor = $divisor;
+        $this->divisor = $divisor ?? 1;
     }
 
     /**
      * Transforms a normalized format into a localized money string.
      *
-     * @param int|float $value Normalized number
+     * @param int|float|null $value Normalized number
      *
-     * @return string Localized money string.
-     *
-     * @throws TransformationFailedException If the given value is not numeric or
-     *                                       if the value can not be transformed.
+     * @throws TransformationFailedException if the given value is not numeric or
+     *                                       if the value cannot be transformed
      */
-    public function transform($value)
+    public function transform(mixed $value): string
     {
-        if (null !== $value) {
+        if (null !== $value && 1 !== $this->divisor) {
             if (!is_numeric($value)) {
                 throw new TransformationFailedException('Expected a numeric.');
             }
-
             $value /= $this->divisor;
         }
 
@@ -70,17 +61,24 @@ class MoneyToLocalizedStringTransformer extends NumberToLocalizedStringTransform
      *
      * @param string $value Localized money string
      *
-     * @return int|float Normalized number
-     *
-     * @throws TransformationFailedException If the given value is not a string
-     *                                       or if the value can not be transformed.
+     * @throws TransformationFailedException if the given value is not a string
+     *                                       or if the value cannot be transformed
      */
-    public function reverseTransform($value)
+    public function reverseTransform(mixed $value): int|float|null
     {
         $value = parent::reverseTransform($value);
+        if (null !== $value && 1 !== $this->divisor) {
+            $value = (string) ($value * $this->divisor);
 
-        if (null !== $value) {
-            $value *= $this->divisor;
+            if ('float' === $this->modelType) {
+                return (float) $value;
+            }
+
+            if ($value > \PHP_INT_MAX || $value < \PHP_INT_MIN) {
+                throw new TransformationFailedException(sprintf("The value '%d' is too large you should pass the 'model_type' to 'float'.", $value));
+            }
+
+            $value = (int) $value;
         }
 
         return $value;

@@ -1,9 +1,9 @@
 {
     "name": "symfony/process",
     "type": "library",
-    "description": "Symfony Process Component",
+    "description": "Executes commands in sub-processes",
     "keywords": [],
-    "homepage": "http://symfony.com",
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {
@@ -12,20 +12,17 @@
         },
         {
             "name": "Symfony Community",
-            "homepage": "http://symfony.com/contributors"
+            "homepage": "https://symfony.com/contributors"
         }
     ],
     "require": {
-        "php": ">=5.3.3"
+        "php": ">=8.2"
     },
     "autoload": {
-        "psr-0": { "Symfony\\Component\\Process\\": "" }
+        "psr-4": { "Symfony\\Component\\Process\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
     },
-    "target-dir": "Symfony/Component/Process",
-    "minimum-stability": "dev",
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev"
-        }
-    }
+    "minimum-stability": "dev"
 }

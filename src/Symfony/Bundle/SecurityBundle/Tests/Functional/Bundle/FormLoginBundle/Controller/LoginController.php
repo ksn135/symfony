@@ -11,33 +11,43 @@
 
 namespace Symfony\Bundle\SecurityBundle\Tests\Functional\Bundle\FormLoginBundle\Controller;
 
-use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Psr\Container\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Security\Core\SecurityContext;
-use Symfony\Component\DependencyInjection\ContainerAware;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Security\Http\SecurityRequestAttributes;
+use Symfony\Contracts\Service\ServiceSubscriberInterface;
+use Twig\Environment;
 
-class LoginController extends ContainerAware
+class LoginController implements ServiceSubscriberInterface
 {
-    public function loginAction(Request $request)
-    {
-        // get the login error if there is one
-        if ($request->attributes->has(SecurityContext::AUTHENTICATION_ERROR)) {
-            $error = $request->attributes->get(SecurityContext::AUTHENTICATION_ERROR);
-        } else {
-            $error = $request->getSession()->get(SecurityContext::AUTHENTICATION_ERROR);
-        }
+    private ContainerInterface $container;
 
-        return $this->container->get('templating')->renderResponse('FormLoginBundle:Login:login.html.twig', array(
-            // last username entered by the user
-            'last_username' => $request->getSession()->get(SecurityContext::LAST_USERNAME),
-            'error' => $error,
-        ));
+    public function __construct(ContainerInterface $container)
+    {
+        $this->container = $container;
     }
 
-    public function afterLoginAction()
+    public function loginAction(Request $request, ?UserInterface $user = null)
     {
-        return $this->container->get('templating')->renderResponse('FormLoginBundle:Login:after_login.html.twig');
+        // get the login error if there is one
+        if ($request->attributes->has(SecurityRequestAttributes::AUTHENTICATION_ERROR)) {
+            $error = $request->attributes->get(SecurityRequestAttributes::AUTHENTICATION_ERROR);
+        } else {
+            $error = $request->getSession()->get(SecurityRequestAttributes::AUTHENTICATION_ERROR);
+        }
+
+        return new Response($this->container->get('twig')->render('@FormLogin/Login/login.html.twig', [
+            // last username entered by the user
+            'last_username' => $request->getSession()->get(SecurityRequestAttributes::LAST_USERNAME),
+            'error' => $error,
+        ]));
+    }
+
+    public function afterLoginAction(UserInterface $user)
+    {
+        return new Response($this->container->get('twig')->render('@FormLogin/Login/after_login.html.twig', ['user' => $user]));
     }
 
     public function loginCheckAction()
@@ -48,5 +58,12 @@ class LoginController extends ContainerAware
     public function secureAction()
     {
         throw new \Exception('Wrapper', 0, new \Exception('Another Wrapper', 0, new AccessDeniedException()));
+    }
+
+    public static function getSubscribedServices(): array
+    {
+        return [
+            'twig' => Environment::class,
+        ];
     }
 }

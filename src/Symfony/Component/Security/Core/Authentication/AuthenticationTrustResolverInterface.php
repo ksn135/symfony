@@ -21,33 +21,18 @@ use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 interface AuthenticationTrustResolverInterface
 {
     /**
-     * Resolves whether the passed token implementation is authenticated
-     * anonymously.
-     *
-     * If null is passed, the method must return false.
-     *
-     * @param TokenInterface $token
-     *
-     * @return bool
+     * Resolves whether the passed token implementation is authenticated.
      */
-    public function isAnonymous(TokenInterface $token = null);
+    public function isAuthenticated(?TokenInterface $token = null): bool;
 
     /**
      * Resolves whether the passed token implementation is authenticated
      * using remember-me capabilities.
-     *
-     * @param TokenInterface $token
-     *
-     * @return bool
      */
-    public function isRememberMe(TokenInterface $token = null);
+    public function isRememberMe(?TokenInterface $token = null): bool;
 
     /**
      * Resolves whether the passed token implementation is fully authenticated.
-     *
-     * @param TokenInterface $token
-     *
-     * @return bool
      */
-    public function isFullFledged(TokenInterface $token = null);
+    public function isFullFledged(?TokenInterface $token = null): bool;
 }

@@ -11,60 +11,64 @@
 
 namespace Symfony\Component\Security\Csrf\Tests\TokenGenerator;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Security\Csrf\TokenGenerator\UriSafeTokenGenerator;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class UriSafeTokenGeneratorTest extends \PHPUnit_Framework_TestCase
+class UriSafeTokenGeneratorTest extends TestCase
 {
-    const ENTROPY = 1000;
+    private const ENTROPY = 1000;
 
     /**
-     * A non alpha-numeric byte string
-     * @var string
+     * A non alpha-numeric byte string.
      */
-    private static $bytes;
+    private static string $bytes;
 
-    /**
-     * @var \PHPUnit_Framework_MockObject_MockObject
-     */
-    private $random;
+    private UriSafeTokenGenerator $generator;
 
-    /**
-     * @var UriSafeTokenGenerator
-     */
-    private $generator;
-
-    public static function setUpBeforeClass()
+    public static function setUpBeforeClass(): void
     {
         self::$bytes = base64_decode('aMf+Tct/RLn2WQ==');
     }
 
-    protected function setUp()
+    protected function setUp(): void
     {
-        $this->random = $this->getMock('Symfony\Component\Security\Core\Util\SecureRandomInterface');
-        $this->generator = new UriSafeTokenGenerator($this->random, self::ENTROPY);
-    }
-
-    protected function tearDown()
-    {
-        $this->random = null;
-        $this->generator = null;
+        $this->generator = new UriSafeTokenGenerator(self::ENTROPY);
     }
 
     public function testGenerateToken()
     {
-        $this->random->expects($this->once())
-            ->method('nextBytes')
-            ->with(self::ENTROPY/8)
-            ->will($this->returnValue(self::$bytes));
-
         $token = $this->generator->generateToken();
 
         $this->assertTrue(ctype_print($token), 'is printable');
         $this->assertStringNotMatchesFormat('%S+%S', $token, 'is URI safe');
         $this->assertStringNotMatchesFormat('%S/%S', $token, 'is URI safe');
         $this->assertStringNotMatchesFormat('%S=%S', $token, 'is URI safe');
+    }
+
+    /**
+     * @dataProvider validDataProvider
+     */
+    public function testValidLength(int $entropy, int $length)
+    {
+        $generator = new UriSafeTokenGenerator($entropy);
+        $token = $generator->generateToken();
+        $this->assertSame($length, \strlen($token));
+    }
+
+    public static function validDataProvider(): \Iterator
+    {
+        yield [24, 4];
+        yield 'Float length' => [20, 3];
+    }
+
+    public function testInvalidLength()
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Entropy should be greater than 7.');
+
+        new UriSafeTokenGenerator(7);
     }
 }

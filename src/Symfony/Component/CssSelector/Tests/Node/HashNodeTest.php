@@ -11,23 +11,23 @@
 
 namespace Symfony\Component\CssSelector\Tests\Node;
 
-use Symfony\Component\CssSelector\Node\HashNode;
 use Symfony\Component\CssSelector\Node\ElementNode;
+use Symfony\Component\CssSelector\Node\HashNode;
 
-class HashNodeTest extends AbstractNodeTest
+class HashNodeTest extends AbstractNodeTestCase
 {
-    public function getToStringConversionTestData()
+    public static function getToStringConversionTestData()
     {
-        return array(
-            array(new HashNode(new ElementNode(), 'id'), 'Hash[Element[*]#id]'),
-        );
+        return [
+            [new HashNode(new ElementNode(), 'id'), 'Hash[Element[*]#id]'],
+        ];
     }
 
-    public function getSpecificityValueTestData()
+    public static function getSpecificityValueTestData()
     {
-        return array(
-            array(new HashNode(new ElementNode(), 'id'), 100),
-            array(new HashNode(new ElementNode(null, 'id'), 'class'), 101),
-        );
+        return [
+            [new HashNode(new ElementNode(), 'id'), 100],
+            [new HashNode(new ElementNode(null, 'id'), 'class'), 101],
+        ];
     }
 }

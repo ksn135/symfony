@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Security\Core\Authentication\Token;
 
+use Symfony\Component\Security\Core\Exception\InvalidArgumentException;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 /**
@@ -20,95 +21,51 @@ use Symfony\Component\Security\Core\User\UserInterface;
  */
 class RememberMeToken extends AbstractToken
 {
-    private $key;
-    private $providerKey;
+    private string $secret;
+    private string $firewallName;
 
     /**
-     * Constructor.
-     *
-     * @param UserInterface $user
-     * @param string        $providerKey
-     * @param string        $key
+     * @param string $secret A secret used to make sure the token is created by the app and not by a malicious client
      *
      * @throws \InvalidArgumentException
      */
-    public function __construct(UserInterface $user, $providerKey, $key)
+    public function __construct(UserInterface $user, string $firewallName, #[\SensitiveParameter] string $secret)
     {
         parent::__construct($user->getRoles());
 
-        if (empty($key)) {
-            throw new \InvalidArgumentException('$key must not be empty.');
+        if (!$secret) {
+            throw new InvalidArgumentException('A non-empty secret is required.');
         }
 
-        if (empty($providerKey)) {
-            throw new \InvalidArgumentException('$providerKey must not be empty.');
+        if (!$firewallName) {
+            throw new InvalidArgumentException('$firewallName must not be empty.');
         }
 
-        $this->providerKey = $providerKey;
-        $this->key = $key;
+        $this->firewallName = $firewallName;
+        $this->secret = $secret;
 
         $this->setUser($user);
-        parent::setAuthenticated(true);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setAuthenticated($authenticated)
+    public function getFirewallName(): string
     {
-        if ($authenticated) {
-            throw new \LogicException('You cannot set this token to authenticated after creation.');
-        }
-
-        parent::setAuthenticated(false);
+        return $this->firewallName;
     }
 
-    /**
-     * Returns the provider key.
-     *
-     * @return string The provider key
-     */
-    public function getProviderKey()
+    public function getSecret(): string
     {
-        return $this->providerKey;
+        return $this->secret;
     }
 
-    /**
-     * Returns the key.
-     *
-     * @return string The Key
-     */
-    public function getKey()
+    public function __serialize(): array
     {
-        return $this->key;
+        return [$this->secret, $this->firewallName, parent::__serialize()];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getCredentials()
+    public function __unserialize(array $data): void
     {
-        return '';
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function serialize()
-    {
-        return serialize(array(
-            $this->key,
-            $this->providerKey,
-            parent::serialize(),
-        ));
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function unserialize($serialized)
-    {
-        list($this->key, $this->providerKey, $parentStr) = unserialize($serialized);
-        parent::unserialize($parentStr);
+        [$this->secret, $this->firewallName, $parentData] = $data;
+        $parentData = \is_array($parentData) ? $parentData : unserialize($parentData);
+        parent::__unserialize($parentData);
     }
 }

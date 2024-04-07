@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\Console\Question;
 
+use Symfony\Component\Console\Exception\InvalidArgumentException;
+
 /**
  * Represents a choice question.
  *
@@ -18,26 +20,34 @@ namespace Symfony\Component\Console\Question;
  */
 class ChoiceQuestion extends Question
 {
-    private $choices;
-    private $multiselect = false;
-    private $prompt = ' > ';
-    private $errorMessage = 'Value "%s" is invalid';
+    private bool $multiselect = false;
+    private string $prompt = ' > ';
+    private string $errorMessage = 'Value "%s" is invalid';
 
-    public function __construct($question, array $choices, $default = null)
-    {
+    /**
+     * @param string $question The question to ask to the user
+     * @param array  $choices  The list of available choices
+     * @param mixed  $default  The default answer to return
+     */
+    public function __construct(
+        string $question,
+        private array $choices,
+        mixed $default = null,
+    ) {
+        if (!$choices) {
+            throw new \LogicException('Choice question must have at least 1 choice available.');
+        }
+
         parent::__construct($question, $default);
 
-        $this->choices = $choices;
         $this->setValidator($this->getDefaultValidator());
-        $this->setAutocompleterValues(array_keys($choices));
+        $this->setAutocompleterValues($choices);
     }
 
     /**
      * Returns available choices.
-     *
-     * @return array
      */
-    public function getChoices()
+    public function getChoices(): array
     {
         return $this->choices;
     }
@@ -47,11 +57,9 @@ class ChoiceQuestion extends Question
      *
      * When multiselect is set to true, multiple choices can be answered.
      *
-     * @param bool    $multiselect
-     *
-     * @return ChoiceQuestion The current instance
+     * @return $this
      */
-    public function setMultiselect($multiselect)
+    public function setMultiselect(bool $multiselect): static
     {
         $this->multiselect = $multiselect;
         $this->setValidator($this->getDefaultValidator());
@@ -60,11 +68,17 @@ class ChoiceQuestion extends Question
     }
 
     /**
-     * Gets the prompt for choices.
-     *
-     * @return string
+     * Returns whether the choices are multiselect.
      */
-    public function getPrompt()
+    public function isMultiselect(): bool
+    {
+        return $this->multiselect;
+    }
+
+    /**
+     * Gets the prompt for choices.
+     */
+    public function getPrompt(): string
     {
         return $this->prompt;
     }
@@ -72,11 +86,9 @@ class ChoiceQuestion extends Question
     /**
      * Sets the prompt for choices.
      *
-     * @param string $prompt
-     *
-     * @return ChoiceQuestion The current instance
+     * @return $this
      */
-    public function setPrompt($prompt)
+    public function setPrompt(string $prompt): static
     {
         $this->prompt = $prompt;
 
@@ -88,11 +100,9 @@ class ChoiceQuestion extends Question
      *
      * The error message has a string placeholder (%s) for the invalid value.
      *
-     * @param string $errorMessage
-     *
-     * @return ChoiceQuestion The current instance
+     * @return $this
      */
-    public function setErrorMessage($errorMessage)
+    public function setErrorMessage(string $errorMessage): static
     {
         $this->errorMessage = $errorMessage;
         $this->setValidator($this->getDefaultValidator());
@@ -100,39 +110,69 @@ class ChoiceQuestion extends Question
         return $this;
     }
 
-    private function getDefaultValidator()
+    private function getDefaultValidator(): callable
     {
         $choices = $this->choices;
         $errorMessage = $this->errorMessage;
         $multiselect = $this->multiselect;
+        $isAssoc = $this->isAssoc($choices);
 
-        return function ($selected) use ($choices, $errorMessage, $multiselect) {
-            // Collapse all spaces.
-            $selectedChoices = str_replace(' ', '', $selected);
-
+        return function ($selected) use ($choices, $errorMessage, $multiselect, $isAssoc) {
             if ($multiselect) {
                 // Check for a separated comma values
-                if (!preg_match('/^[a-zA-Z0-9_-]+(?:,[a-zA-Z0-9_-]+)*$/', $selectedChoices, $matches)) {
-                    throw new \InvalidArgumentException(sprintf($errorMessage, $selected));
+                if (!preg_match('/^[^,]+(?:,[^,]+)*$/', (string) $selected, $matches)) {
+                    throw new InvalidArgumentException(sprintf($errorMessage, $selected));
                 }
-                $selectedChoices = explode(',', $selectedChoices);
+
+                $selectedChoices = explode(',', (string) $selected);
             } else {
-                $selectedChoices = array($selected);
+                $selectedChoices = [$selected];
             }
 
-            $multiselectChoices = array();
-            foreach ($selectedChoices as $value) {
-                if (empty($choices[$value])) {
-                    throw new \InvalidArgumentException(sprintf($errorMessage, $value));
+            if ($this->isTrimmable()) {
+                foreach ($selectedChoices as $k => $v) {
+                    $selectedChoices[$k] = trim((string) $v);
                 }
-                array_push($multiselectChoices, $choices[$value]);
+            }
+
+            $multiselectChoices = [];
+            foreach ($selectedChoices as $value) {
+                $results = [];
+                foreach ($choices as $key => $choice) {
+                    if ($choice === $value) {
+                        $results[] = $key;
+                    }
+                }
+
+                if (\count($results) > 1) {
+                    throw new InvalidArgumentException(sprintf('The provided answer is ambiguous. Value should be one of "%s".', implode('" or "', $results)));
+                }
+
+                $result = array_search($value, $choices);
+
+                if (!$isAssoc) {
+                    if (false !== $result) {
+                        $result = $choices[$result];
+                    } elseif (isset($choices[$value])) {
+                        $result = $choices[$value];
+                    }
+                } elseif (false === $result && isset($choices[$value])) {
+                    $result = $value;
+                }
+
+                if (false === $result) {
+                    throw new InvalidArgumentException(sprintf($errorMessage, $value));
+                }
+
+                // For associative choices, consistently return the key as string:
+                $multiselectChoices[] = $isAssoc ? (string) $result : $result;
             }
 
             if ($multiselect) {
                 return $multiselectChoices;
             }
 
-            return $choices[$selected];
+            return current($multiselectChoices);
         };
     }
 }

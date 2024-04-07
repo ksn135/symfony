@@ -16,7 +16,6 @@ namespace Symfony\Component\Validator\Util;
  *
  * For more extensive functionality, use Symfony's PropertyAccess component.
  *
- * @since  2.5
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
 class PropertyPath
@@ -29,20 +28,15 @@ class PropertyPath
      * squared opening bracket ("["), the concatenation of the two paths is
      * returned. Otherwise, the concatenation of the two paths is returned,
      * separated by a dot (".").
-     *
-     * @param string $basePath The base path
-     * @param string $subPath  The path to append
-     *
-     * @return string The concatenation of the two property paths
      */
-    public static function append($basePath, $subPath)
+    public static function append(string $basePath, string $subPath): string
     {
-        if ('' !== (string) $subPath) {
-            if ('[' === $subPath{0}) {
+        if ('' !== $subPath) {
+            if ('[' === $subPath[0]) {
                 return $basePath.$subPath;
             }
 
-            return $basePath ? $basePath.'.'.$subPath : $subPath;
+            return '' !== $basePath ? $basePath.'.'.$subPath : $subPath;
         }
 
         return $basePath;

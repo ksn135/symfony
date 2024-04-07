@@ -11,8 +11,8 @@
 
 namespace Symfony\Component\Console\Output;
 
-use Symfony\Component\Console\Formatter\OutputFormatterInterface;
 use Symfony\Component\Console\Formatter\OutputFormatter;
+use Symfony\Component\Console\Formatter\OutputFormatterInterface;
 
 /**
  * Base class for output classes.
@@ -26,116 +26,94 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
  *  * quiet: -q (no output)
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 abstract class Output implements OutputInterface
 {
-    private $verbosity;
-    private $formatter;
+    private int $verbosity;
+    private OutputFormatterInterface $formatter;
 
     /**
-     * Constructor.
-     *
-     * @param int                           $verbosity The verbosity level (one of the VERBOSITY constants in OutputInterface)
+     * @param int|null                      $verbosity The verbosity level (one of the VERBOSITY constants in OutputInterface)
      * @param bool                          $decorated Whether to decorate messages
      * @param OutputFormatterInterface|null $formatter Output formatter instance (null to use default OutputFormatter)
-     *
-     * @api
      */
-    public function __construct($verbosity = self::VERBOSITY_NORMAL, $decorated = false, OutputFormatterInterface $formatter = null)
+    public function __construct(?int $verbosity = self::VERBOSITY_NORMAL, bool $decorated = false, ?OutputFormatterInterface $formatter = null)
     {
-        $this->verbosity = null === $verbosity ? self::VERBOSITY_NORMAL : $verbosity;
-        $this->formatter = $formatter ?: new OutputFormatter();
+        $this->verbosity = $verbosity ?? self::VERBOSITY_NORMAL;
+        $this->formatter = $formatter ?? new OutputFormatter();
         $this->formatter->setDecorated($decorated);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setFormatter(OutputFormatterInterface $formatter)
+    public function setFormatter(OutputFormatterInterface $formatter): void
     {
         $this->formatter = $formatter;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getFormatter()
+    public function getFormatter(): OutputFormatterInterface
     {
         return $this->formatter;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setDecorated($decorated)
+    public function setDecorated(bool $decorated): void
     {
         $this->formatter->setDecorated($decorated);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function isDecorated()
+    public function isDecorated(): bool
     {
         return $this->formatter->isDecorated();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setVerbosity($level)
+    public function setVerbosity(int $level): void
     {
-        $this->verbosity = (int) $level;
+        $this->verbosity = $level;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getVerbosity()
+    public function getVerbosity(): int
     {
         return $this->verbosity;
     }
 
-    public function isQuiet()
+    public function isQuiet(): bool
     {
         return self::VERBOSITY_QUIET === $this->verbosity;
     }
 
-    public function isVerbose()
+    public function isVerbose(): bool
     {
         return self::VERBOSITY_VERBOSE <= $this->verbosity;
     }
 
-    public function isVeryVerbose()
+    public function isVeryVerbose(): bool
     {
         return self::VERBOSITY_VERY_VERBOSE <= $this->verbosity;
     }
 
-    public function isDebug()
+    public function isDebug(): bool
     {
         return self::VERBOSITY_DEBUG <= $this->verbosity;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function writeln($messages, $type = self::OUTPUT_NORMAL)
+    public function writeln(string|iterable $messages, int $options = self::OUTPUT_NORMAL): void
     {
-        $this->write($messages, true, $type);
+        $this->write($messages, true, $options);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function write($messages, $newline = false, $type = self::OUTPUT_NORMAL)
+    public function write(string|iterable $messages, bool $newline = false, int $options = self::OUTPUT_NORMAL): void
     {
-        if (self::VERBOSITY_QUIET === $this->verbosity) {
-            return;
+        if (!is_iterable($messages)) {
+            $messages = [$messages];
         }
 
-        $messages = (array) $messages;
+        $types = self::OUTPUT_NORMAL | self::OUTPUT_RAW | self::OUTPUT_PLAIN;
+        $type = $types & $options ?: self::OUTPUT_NORMAL;
+
+        $verbosities = self::VERBOSITY_QUIET | self::VERBOSITY_NORMAL | self::VERBOSITY_VERBOSE | self::VERBOSITY_VERY_VERBOSE | self::VERBOSITY_DEBUG;
+        $verbosity = $verbosities & $options ?: self::VERBOSITY_NORMAL;
+
+        if ($verbosity > $this->getVerbosity()) {
+            return;
+        }
 
         foreach ($messages as $message) {
             switch ($type) {
@@ -147,19 +125,14 @@ abstract class Output implements OutputInterface
                 case OutputInterface::OUTPUT_PLAIN:
                     $message = strip_tags($this->formatter->format($message));
                     break;
-                default:
-                    throw new \InvalidArgumentException(sprintf('Unknown output type given (%s)', $type));
             }
 
-            $this->doWrite($message, $newline);
+            $this->doWrite($message ?? '', $newline);
         }
     }
 
     /**
      * Writes a message to the output.
-     *
-     * @param string  $message A message to write to the output
-     * @param bool    $newline Whether to add a newline or not
      */
-    abstract protected function doWrite($message, $newline);
+    abstract protected function doWrite(string $message, bool $newline): void;
 }

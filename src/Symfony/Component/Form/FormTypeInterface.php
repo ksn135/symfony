@@ -11,7 +11,7 @@
 
 namespace Symfony\Component\Form;
 
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
@@ -19,15 +19,33 @@ use Symfony\Component\OptionsResolver\OptionsResolverInterface;
 interface FormTypeInterface
 {
     /**
+     * Returns the name of the parent type.
+     *
+     * The parent type and its extensions will configure the form with the
+     * following methods before the current implementation.
+     *
+     * @return string|null
+     */
+    public function getParent();
+
+    /**
+     * Configures the options for this type.
+     *
+     * @return void
+     */
+    public function configureOptions(OptionsResolver $resolver);
+
+    /**
      * Builds the form.
      *
      * This method is called for each type in the hierarchy starting from the
      * top most type. Type extensions can further modify the form.
      *
-     * @see FormTypeExtensionInterface::buildForm()
+     * @param array<string, mixed> $options
      *
-     * @param FormBuilderInterface $builder The form builder
-     * @param array                $options The options
+     * @return void
+     *
+     * @see FormTypeExtensionInterface::buildForm()
      */
     public function buildForm(FormBuilderInterface $builder, array $options);
 
@@ -41,11 +59,11 @@ interface FormTypeInterface
      * This means that you cannot access child views in this method. If you need
      * to do so, move your logic to {@link finishView()} instead.
      *
-     * @see FormTypeExtensionInterface::buildView()
+     * @param array<string, mixed> $options
      *
-     * @param FormView      $view    The view
-     * @param FormInterface $form    The form
-     * @param array         $options The options
+     * @return void
+     *
+     * @see FormTypeExtensionInterface::buildView()
      */
     public function buildView(FormView $view, FormInterface $form, array $options);
 
@@ -60,36 +78,21 @@ interface FormTypeInterface
      * such logic in this method that actually accesses child views. For everything
      * else you are recommended to implement {@link buildView()} instead.
      *
-     * @see FormTypeExtensionInterface::finishView()
+     * @param array<string, mixed> $options
      *
-     * @param FormView      $view    The view
-     * @param FormInterface $form    The form
-     * @param array         $options The options
+     * @return void
+     *
+     * @see FormTypeExtensionInterface::finishView()
      */
     public function finishView(FormView $view, FormInterface $form, array $options);
 
     /**
-     * Sets the default options for this type.
+     * Returns the prefix of the template block name for this type.
      *
-     * @param OptionsResolverInterface $resolver The resolver for the options.
+     * The block prefix defaults to the underscored short class name with
+     * the "Type" suffix removed (e.g. "UserProfileType" => "user_profile").
+     *
+     * @return string
      */
-    public function setDefaultOptions(OptionsResolverInterface $resolver);
-
-    /**
-     * Returns the name of the parent type.
-     *
-     * You can also return a type instance from this method, although doing so
-     * is discouraged because it leads to a performance penalty. The support
-     * for returning type instances may be dropped from future releases.
-     *
-     * @return string|null|FormTypeInterface The name of the parent type if any, null otherwise.
-     */
-    public function getParent();
-
-    /**
-     * Returns the name of this type.
-     *
-     * @return string The name of this type
-     */
-    public function getName();
+    public function getBlockPrefix();
 }

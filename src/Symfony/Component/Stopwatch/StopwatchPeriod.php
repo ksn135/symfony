@@ -18,60 +18,56 @@ namespace Symfony\Component\Stopwatch;
  */
 class StopwatchPeriod
 {
-    private $start;
-    private $end;
-    private $memory;
+    private int|float $start;
+    private int|float $end;
+    private int $memory;
 
     /**
-     * Constructor.
-     *
-     * @param int $start The relative time of the start of the period (in milliseconds)
-     * @param int $end   The relative time of the end of the period (in milliseconds)
+     * @param int|float $start         The relative time of the start of the period (in milliseconds)
+     * @param int|float $end           The relative time of the end of the period (in milliseconds)
+     * @param bool      $morePrecision If true, time is stored as float to keep the original microsecond precision
      */
-    public function __construct($start, $end)
+    public function __construct(int|float $start, int|float $end, bool $morePrecision = false)
     {
-        $this->start = (int) $start;
-        $this->end = (int) $end;
+        $this->start = $morePrecision ? (float) $start : (int) $start;
+        $this->end = $morePrecision ? (float) $end : (int) $end;
         $this->memory = memory_get_usage(true);
     }
 
     /**
-     * Gets the relative time of the start of the period.
-     *
-     * @return int     The time (in milliseconds)
+     * Gets the relative time of the start of the period in milliseconds.
      */
-    public function getStartTime()
+    public function getStartTime(): int|float
     {
         return $this->start;
     }
 
     /**
-     * Gets the relative time of the end of the period.
-     *
-     * @return int     The time (in milliseconds)
+     * Gets the relative time of the end of the period in milliseconds.
      */
-    public function getEndTime()
+    public function getEndTime(): int|float
     {
         return $this->end;
     }
 
     /**
-     * Gets the time spent in this period.
-     *
-     * @return int     The period duration (in milliseconds)
+     * Gets the time spent in this period in milliseconds.
      */
-    public function getDuration()
+    public function getDuration(): int|float
     {
         return $this->end - $this->start;
     }
 
     /**
-     * Gets the memory usage.
-     *
-     * @return int     The memory usage (in bytes)
+     * Gets the memory usage in bytes.
      */
-    public function getMemory()
+    public function getMemory(): int
     {
         return $this->memory;
+    }
+
+    public function __toString(): string
+    {
+        return sprintf('%.2F MiB - %d ms', $this->getMemory() / 1024 / 1024, $this->getDuration());
     }
 }

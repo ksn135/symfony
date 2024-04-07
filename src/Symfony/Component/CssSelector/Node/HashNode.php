@@ -14,61 +14,37 @@ namespace Symfony\Component\CssSelector\Node;
 /**
  * Represents a "<selector>#<id>" node.
  *
- * This component is a port of the Python cssselector library,
+ * This component is a port of the Python cssselect library,
  * which is copyright Ian Bicking, @see https://github.com/SimonSapin/cssselect.
  *
  * @author Jean-François Simon <jeanfrancois.simon@sensiolabs.com>
+ *
+ * @internal
  */
 class HashNode extends AbstractNode
 {
-    /**
-     * @var NodeInterface
-     */
-    private $selector;
-
-    /**
-     * @var string
-     */
-    private $id;
-
-    /**
-     * @param NodeInterface $selector
-     * @param string        $id
-     */
-    public function __construct(NodeInterface $selector, $id)
-    {
-        $this->selector = $selector;
-        $this->id = $id;
+    public function __construct(
+        private NodeInterface $selector,
+        private string $id,
+    ) {
     }
 
-    /**
-     * @return NodeInterface
-     */
-    public function getSelector()
+    public function getSelector(): NodeInterface
     {
         return $this->selector;
     }
 
-    /**
-     * @return string
-     */
-    public function getId()
+    public function getId(): string
     {
         return $this->id;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getSpecificity()
+    public function getSpecificity(): Specificity
     {
         return $this->selector->getSpecificity()->plus(new Specificity(1, 0, 0));
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function __toString()
+    public function __toString(): string
     {
         return sprintf('%s[%s#%s]', $this->getNodeName(), $this->selector, $this->id);
     }

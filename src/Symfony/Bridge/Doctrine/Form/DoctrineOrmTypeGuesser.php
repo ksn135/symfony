@@ -11,91 +11,96 @@
 
 namespace Symfony\Bridge\Doctrine\Form;
 
-use Doctrine\Common\Persistence\ManagerRegistry;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\ClassMetadataInfo;
-use Doctrine\Common\Persistence\Mapping\MappingException;
+use Doctrine\ORM\Mapping\FieldMapping;
+use Doctrine\ORM\Mapping\JoinColumnMapping;
 use Doctrine\ORM\Mapping\MappingException as LegacyMappingException;
+use Doctrine\Persistence\ManagerRegistry;
+use Doctrine\Persistence\Mapping\MappingException;
+use Doctrine\Persistence\Proxy;
+use Symfony\Bridge\Doctrine\Form\Type\EntityType;
+use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
+use Symfony\Component\Form\Extension\Core\Type\CollectionType;
+use Symfony\Component\Form\Extension\Core\Type\DateIntervalType;
+use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
+use Symfony\Component\Form\Extension\Core\Type\DateType;
+use Symfony\Component\Form\Extension\Core\Type\IntegerType;
+use Symfony\Component\Form\Extension\Core\Type\NumberType;
+use Symfony\Component\Form\Extension\Core\Type\TextareaType;
+use Symfony\Component\Form\Extension\Core\Type\TextType;
+use Symfony\Component\Form\Extension\Core\Type\TimeType;
 use Symfony\Component\Form\FormTypeGuesserInterface;
 use Symfony\Component\Form\Guess\Guess;
 use Symfony\Component\Form\Guess\TypeGuess;
 use Symfony\Component\Form\Guess\ValueGuess;
-use Doctrine\Common\Util\ClassUtils;
 
 class DoctrineOrmTypeGuesser implements FormTypeGuesserInterface
 {
-    protected $registry;
+    protected ManagerRegistry $registry;
 
-    private $cache = array();
+    private array $cache = [];
 
     public function __construct(ManagerRegistry $registry)
     {
         $this->registry = $registry;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function guessType($class, $property)
+    public function guessType(string $class, string $property): ?TypeGuess
     {
         if (!$ret = $this->getMetadata($class)) {
-            return new TypeGuess('text', array(), Guess::LOW_CONFIDENCE);
+            return new TypeGuess(TextType::class, [], Guess::LOW_CONFIDENCE);
         }
 
-        list($metadata, $name) = $ret;
+        [$metadata, $name] = $ret;
 
         if ($metadata->hasAssociation($property)) {
             $multiple = $metadata->isCollectionValuedAssociation($property);
             $mapping = $metadata->getAssociationMapping($property);
 
-            return new TypeGuess('entity', array('em' => $name, 'class' => $mapping['targetEntity'], 'multiple' => $multiple), Guess::HIGH_CONFIDENCE);
+            return new TypeGuess(EntityType::class, ['em' => $name, 'class' => $mapping['targetEntity'], 'multiple' => $multiple], Guess::HIGH_CONFIDENCE);
         }
 
-        switch ($metadata->getTypeOfField($property)) {
-            case 'array':
-                return new TypeGuess('collection', array(), Guess::MEDIUM_CONFIDENCE);
-            case 'boolean':
-                return new TypeGuess('checkbox', array(), Guess::HIGH_CONFIDENCE);
-            case 'datetime':
-            case 'vardatetime':
-            case 'datetimetz':
-                return new TypeGuess('datetime', array(), Guess::HIGH_CONFIDENCE);
-            case 'date':
-                return new TypeGuess('date', array(), Guess::HIGH_CONFIDENCE);
-            case 'time':
-                return new TypeGuess('time', array(), Guess::HIGH_CONFIDENCE);
-            case 'decimal':
-            case 'float':
-                return new TypeGuess('number', array(), Guess::MEDIUM_CONFIDENCE);
-            case 'integer':
-            case 'bigint':
-            case 'smallint':
-                return new TypeGuess('integer', array(), Guess::MEDIUM_CONFIDENCE);
-            case 'string':
-                return new TypeGuess('text', array(), Guess::MEDIUM_CONFIDENCE);
-            case 'text':
-                return new TypeGuess('textarea', array(), Guess::MEDIUM_CONFIDENCE);
-            default:
-                return new TypeGuess('text', array(), Guess::LOW_CONFIDENCE);
-        }
+        return match ($metadata->getTypeOfField($property)) {
+            'array', // DBAL < 4
+            Types::SIMPLE_ARRAY => new TypeGuess(CollectionType::class, [], Guess::MEDIUM_CONFIDENCE),
+            Types::BOOLEAN => new TypeGuess(CheckboxType::class, [], Guess::HIGH_CONFIDENCE),
+            Types::DATETIME_MUTABLE,
+            Types::DATETIMETZ_MUTABLE,
+            'vardatetime' => new TypeGuess(DateTimeType::class, [], Guess::HIGH_CONFIDENCE),
+            Types::DATETIME_IMMUTABLE,
+            Types::DATETIMETZ_IMMUTABLE => new TypeGuess(DateTimeType::class, ['input' => 'datetime_immutable'], Guess::HIGH_CONFIDENCE),
+            Types::DATEINTERVAL => new TypeGuess(DateIntervalType::class, [], Guess::HIGH_CONFIDENCE),
+            Types::DATE_MUTABLE => new TypeGuess(DateType::class, [], Guess::HIGH_CONFIDENCE),
+            Types::DATE_IMMUTABLE => new TypeGuess(DateType::class, ['input' => 'datetime_immutable'], Guess::HIGH_CONFIDENCE),
+            Types::TIME_MUTABLE => new TypeGuess(TimeType::class, [], Guess::HIGH_CONFIDENCE),
+            Types::TIME_IMMUTABLE => new TypeGuess(TimeType::class, ['input' => 'datetime_immutable'], Guess::HIGH_CONFIDENCE),
+            Types::DECIMAL => new TypeGuess(NumberType::class, ['input' => 'string'], Guess::MEDIUM_CONFIDENCE),
+            Types::FLOAT => new TypeGuess(NumberType::class, [], Guess::MEDIUM_CONFIDENCE),
+            Types::INTEGER,
+            Types::BIGINT,
+            Types::SMALLINT => new TypeGuess(IntegerType::class, [], Guess::MEDIUM_CONFIDENCE),
+            Types::STRING => new TypeGuess(TextType::class, [], Guess::MEDIUM_CONFIDENCE),
+            Types::TEXT => new TypeGuess(TextareaType::class, [], Guess::MEDIUM_CONFIDENCE),
+            default => new TypeGuess(TextType::class, [], Guess::LOW_CONFIDENCE),
+        };
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function guessRequired($class, $property)
+    public function guessRequired(string $class, string $property): ?ValueGuess
     {
         $classMetadatas = $this->getMetadata($class);
 
         if (!$classMetadatas) {
-            return;
+            return null;
         }
 
         /** @var ClassMetadataInfo $classMetadata */
         $classMetadata = $classMetadatas[0];
 
         // Check whether the field exists and is nullable or not
-        if ($classMetadata->hasField($property)) {
-            if (!$classMetadata->isNullable($property)) {
+        if (isset($classMetadata->fieldMappings[$property])) {
+            if (!$classMetadata->isNullable($property) && Types::BOOLEAN !== $classMetadata->getTypeOfField($property)) {
                 return new ValueGuess(true, Guess::HIGH_CONFIDENCE);
             }
 
@@ -107,66 +112,95 @@ class DoctrineOrmTypeGuesser implements FormTypeGuesserInterface
         if ($classMetadata->isAssociationWithSingleJoinColumn($property)) {
             $mapping = $classMetadata->getAssociationMapping($property);
 
-            if (!isset($mapping['joinColumns'][0]['nullable'])) {
+            if (null === self::getMappingValue($mapping['joinColumns'][0], 'nullable')) {
                 // The "nullable" option defaults to true, in that case the
                 // field should not be required.
                 return new ValueGuess(false, Guess::HIGH_CONFIDENCE);
             }
 
-            return new ValueGuess(!$mapping['joinColumns'][0]['nullable'], Guess::HIGH_CONFIDENCE);
+            return new ValueGuess(!self::getMappingValue($mapping['joinColumns'][0], 'nullable'), Guess::HIGH_CONFIDENCE);
         }
+
+        return null;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function guessMaxLength($class, $property)
+    public function guessMaxLength(string $class, string $property): ?ValueGuess
     {
         $ret = $this->getMetadata($class);
-        if ($ret && $ret[0]->hasField($property) && !$ret[0]->hasAssociation($property)) {
+        if ($ret && isset($ret[0]->fieldMappings[$property]) && !$ret[0]->hasAssociation($property)) {
             $mapping = $ret[0]->getFieldMapping($property);
 
-            if (isset($mapping['length'])) {
-                return new ValueGuess($mapping['length'], Guess::HIGH_CONFIDENCE);
+            $length = $mapping instanceof FieldMapping ? $mapping->length : ($mapping['length'] ?? null);
+
+            if (null !== $length) {
+                return new ValueGuess($length, Guess::HIGH_CONFIDENCE);
             }
 
-            if (in_array($ret[0]->getTypeOfField($property), array('decimal', 'float'))) {
+            if (\in_array($ret[0]->getTypeOfField($property), [Types::DECIMAL, Types::FLOAT])) {
                 return new ValueGuess(null, Guess::MEDIUM_CONFIDENCE);
             }
         }
+
+        return null;
+    }
+
+    public function guessPattern(string $class, string $property): ?ValueGuess
+    {
+        $ret = $this->getMetadata($class);
+        if ($ret && isset($ret[0]->fieldMappings[$property]) && !$ret[0]->hasAssociation($property)) {
+            if (\in_array($ret[0]->getTypeOfField($property), [Types::DECIMAL, Types::FLOAT])) {
+                return new ValueGuess(null, Guess::MEDIUM_CONFIDENCE);
+            }
+        }
+
+        return null;
     }
 
     /**
-     * {@inheritdoc}
+     * @template T of object
+     *
+     * @param class-string<T> $class
+     *
+     * @return array{0:ClassMetadata<T>, 1:string}|null
      */
-    public function guessPattern($class, $property)
-    {
-        $ret = $this->getMetadata($class);
-        if ($ret && $ret[0]->hasField($property) && !$ret[0]->hasAssociation($property)) {
-            if (in_array($ret[0]->getTypeOfField($property), array('decimal', 'float'))) {
-                return new ValueGuess(null, Guess::MEDIUM_CONFIDENCE);
-            }
-        }
-    }
-
-    protected function getMetadata($class)
+    protected function getMetadata(string $class): ?array
     {
         // normalize class name
-        $class = ClassUtils::getRealClass(ltrim($class, '\\'));
+        $class = self::getRealClass(ltrim($class, '\\'));
 
-        if (array_key_exists($class, $this->cache)) {
+        if (\array_key_exists($class, $this->cache)) {
             return $this->cache[$class];
         }
 
         $this->cache[$class] = null;
         foreach ($this->registry->getManagers() as $name => $em) {
             try {
-                return $this->cache[$class] = array($em->getClassMetadata($class), $name);
-            } catch (MappingException $e) {
+                return $this->cache[$class] = [$em->getClassMetadata($class), $name];
+            } catch (MappingException) {
                 // not an entity or mapped super class
-            } catch (LegacyMappingException $e) {
+            } catch (LegacyMappingException) {
                 // not an entity or mapped super class, using Doctrine ORM 2.2
             }
         }
+
+        return null;
+    }
+
+    private static function getRealClass(string $class): string
+    {
+        if (false === $pos = strrpos($class, '\\'.Proxy::MARKER.'\\')) {
+            return $class;
+        }
+
+        return substr($class, $pos + Proxy::MARKER_LENGTH + 2);
+    }
+
+    private static function getMappingValue(array|JoinColumnMapping $mapping, string $key): mixed
+    {
+        if ($mapping instanceof JoinColumnMapping) {
+            return $mapping->$key ?? null;
+        }
+
+        return $mapping[$key] ?? null;
     }
 }

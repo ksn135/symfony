@@ -15,22 +15,20 @@ namespace Symfony\Component\PropertyAccess;
  * A sequence of property names or array indices.
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
+ *
+ * @extends \Traversable<int, string>
  */
-interface PropertyPathInterface extends \Traversable
+interface PropertyPathInterface extends \Traversable, \Stringable
 {
     /**
-     * Returns the string representation of the property path
-     *
-     * @return string The path as string
+     * Returns the string representation of the property path.
      */
-    public function __toString();
+    public function __toString(): string;
 
     /**
      * Returns the length of the property path, i.e. the number of elements.
-     *
-     * @return int     The path length
      */
-    public function getLength();
+    public function getLength(): int;
 
     /**
      * Returns the parent property path.
@@ -39,48 +37,45 @@ interface PropertyPathInterface extends \Traversable
      * this one except for the last one.
      *
      * If this property path only contains one item, null is returned.
-     *
-     * @return PropertyPath The parent path or null
      */
-    public function getParent();
+    public function getParent(): ?self;
 
     /**
-     * Returns the elements of the property path as array
+     * Returns the elements of the property path as array.
      *
-     * @return array An array of property/index names
+     * @return list<string>
      */
-    public function getElements();
+    public function getElements(): array;
 
     /**
-     * Returns the element at the given index in the property path
+     * Returns the element at the given index in the property path.
      *
-     * @param  int     $index The index key
-     *
-     * @return string A property or index name
+     * @param int $index The index key
      *
      * @throws Exception\OutOfBoundsException If the offset is invalid
      */
-    public function getElement($index);
+    public function getElement(int $index): string;
 
     /**
-     * Returns whether the element at the given index is a property
+     * Returns whether the element at the given index is a property.
      *
-     * @param  int     $index The index in the property path
-     *
-     * @return bool    Whether the element at this index is a property
+     * @param int $index The index in the property path
      *
      * @throws Exception\OutOfBoundsException If the offset is invalid
      */
-    public function isProperty($index);
+    public function isProperty(int $index): bool;
 
     /**
-     * Returns whether the element at the given index is an array index
+     * Returns whether the element at the given index is an array index.
      *
-     * @param  int     $index The index in the property path
-     *
-     * @return bool    Whether the element at this index is an array index
+     * @param int $index The index in the property path
      *
      * @throws Exception\OutOfBoundsException If the offset is invalid
      */
-    public function isIndex($index);
+    public function isIndex(int $index): bool;
+
+    /**
+     * Returns whether the element at the given index is null safe.
+     */
+    public function isNullSafe(int $index): bool;
 }

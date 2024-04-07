@@ -11,105 +11,78 @@
 
 namespace Symfony\Component\DependencyInjection\ParameterBag;
 
+use Symfony\Component\DependencyInjection\Exception\LogicException;
 use Symfony\Component\DependencyInjection\Exception\ParameterNotFoundException;
 
 /**
- * ParameterBagInterface.
+ * ParameterBagInterface is the interface implemented by objects that manage service container parameters.
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 interface ParameterBagInterface
 {
     /**
      * Clears all parameters.
      *
-     * @api
+     * @throws LogicException if the ParameterBagInterface cannot be cleared
      */
-    public function clear();
+    public function clear(): void;
 
     /**
      * Adds parameters to the service container parameters.
      *
-     * @param array $parameters An array of parameters
-     *
-     * @api
+     * @throws LogicException if the parameter cannot be added
      */
-    public function add(array $parameters);
+    public function add(array $parameters): void;
 
     /**
      * Gets the service container parameters.
-     *
-     * @return array An array of parameters
-     *
-     * @api
      */
-    public function all();
+    public function all(): array;
 
     /**
      * Gets a service container parameter.
      *
-     * @param string $name The parameter name
-     *
-     * @return mixed  The parameter value
-     *
      * @throws ParameterNotFoundException if the parameter is not defined
-     *
-     * @api
      */
-    public function get($name);
+    public function get(string $name): array|bool|string|int|float|\UnitEnum|null;
+
+    /**
+     * Removes a parameter.
+     */
+    public function remove(string $name): void;
 
     /**
      * Sets a service container parameter.
      *
-     * @param string $name  The parameter name
-     * @param mixed  $value The parameter value
-     *
-     * @api
+     * @throws LogicException if the parameter cannot be set
      */
-    public function set($name, $value);
+    public function set(string $name, array|bool|string|int|float|\UnitEnum|null $value): void;
 
     /**
      * Returns true if a parameter name is defined.
-     *
-     * @param string $name The parameter name
-     *
-     * @return bool    true if the parameter name is defined, false otherwise
-     *
-     * @api
      */
-    public function has($name);
+    public function has(string $name): bool;
 
     /**
      * Replaces parameter placeholders (%name%) by their values for all parameters.
      */
-    public function resolve();
+    public function resolve(): void;
 
     /**
      * Replaces parameter placeholders (%name%) by their values.
      *
-     * @param mixed $value A value
-     *
      * @throws ParameterNotFoundException if a placeholder references a parameter that does not exist
      */
-    public function resolveValue($value);
+    public function resolveValue(mixed $value): mixed;
 
     /**
-     * Escape parameter placeholders %
-     *
-     * @param mixed $value
-     *
-     * @return mixed
+     * Escape parameter placeholders %.
      */
-    public function escapeValue($value);
+    public function escapeValue(mixed $value): mixed;
 
     /**
-     * Unescape parameter placeholders %
-     *
-     * @param mixed $value
-     *
-     * @return mixed
+     * Unescape parameter placeholders %.
      */
-    public function unescapeValue($value);
+    public function unescapeValue(mixed $value): mixed;
 }

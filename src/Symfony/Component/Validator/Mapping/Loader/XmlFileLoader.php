@@ -12,64 +12,39 @@
 namespace Symfony\Component\Validator\Mapping\Loader;
 
 use Symfony\Component\Config\Util\XmlUtils;
+use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Exception\MappingException;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 
+/**
+ * Loads validation metadata from an XML file.
+ *
+ * @author Bernhard Schussek <bschussek@gmail.com>
+ */
 class XmlFileLoader extends FileLoader
 {
     /**
-     * An array of SimpleXMLElement instances.
+     * The XML nodes of the mapping file.
      *
-     * @var \SimpleXMLElement[]|null
+     * @var \SimpleXMLElement[]
      */
-    protected $classes;
+    protected array $classes;
 
-    /**
-     * {@inheritdoc}
-     */
-    public function loadClassMetadata(ClassMetadata $metadata)
+    public function __construct(string $file)
     {
-        if (null === $this->classes) {
-            $this->classes = array();
-            $xml = $this->parseFile($this->file);
+        $this->file = $file;
+    }
 
-            foreach ($xml->namespace as $namespace) {
-                $this->addNamespaceAlias((string) $namespace['prefix'], trim((string) $namespace));
-            }
-
-            foreach ($xml->class as $class) {
-                $this->classes[(string) $class['name']] = $class;
-            }
+    public function loadClassMetadata(ClassMetadata $metadata): bool
+    {
+        if (!isset($this->classes)) {
+            $this->loadClassesFromXml();
         }
 
         if (isset($this->classes[$metadata->getClassName()])) {
-            $xml = $this->classes[$metadata->getClassName()];
+            $classDescription = $this->classes[$metadata->getClassName()];
 
-            foreach ($xml->{'group-sequence-provider'} as $provider) {
-                $metadata->setGroupSequenceProvider(true);
-            }
-
-            foreach ($xml->{'group-sequence'} as $groupSequence) {
-                if (count($groupSequence->value) > 0) {
-                    $metadata->setGroupSequence($this->parseValues($groupSequence[0]->value));
-                }
-            }
-
-            foreach ($this->parseConstraints($xml->constraint) as $constraint) {
-                $metadata->addConstraint($constraint);
-            }
-
-            foreach ($xml->property as $property) {
-                foreach ($this->parseConstraints($property->constraint) as $constraint) {
-                    $metadata->addPropertyConstraint((string) $property['name'], $constraint);
-                }
-            }
-
-            foreach ($xml->getter as $getter) {
-                foreach ($this->parseConstraints($getter->constraint) as $constraint) {
-                    $metadata->addGetterConstraint((string) $getter['property'], $constraint);
-                }
-            }
+            $this->loadClassMetadataFromXml($metadata, $classDescription);
 
             return true;
         }
@@ -78,29 +53,43 @@ class XmlFileLoader extends FileLoader
     }
 
     /**
+     * Return the names of the classes mapped in this file.
+     *
+     * @return string[]
+     */
+    public function getMappedClasses(): array
+    {
+        if (!isset($this->classes)) {
+            $this->loadClassesFromXml();
+        }
+
+        return array_keys($this->classes);
+    }
+
+    /**
      * Parses a collection of "constraint" XML nodes.
      *
      * @param \SimpleXMLElement $nodes The XML nodes
      *
-     * @return array The Constraint instances
+     * @return Constraint[]
      */
-    protected function parseConstraints(\SimpleXMLElement $nodes)
+    protected function parseConstraints(\SimpleXMLElement $nodes): array
     {
-        $constraints = array();
+        $constraints = [];
 
         foreach ($nodes as $node) {
-            if (count($node) > 0) {
-                if (count($node->value) > 0) {
+            if (\count($node) > 0) {
+                if (\count($node->value) > 0) {
                     $options = $this->parseValues($node->value);
-                } elseif (count($node->constraint) > 0) {
+                } elseif (\count($node->constraint) > 0) {
                     $options = $this->parseConstraints($node->constraint);
-                } elseif (count($node->option) > 0) {
+                } elseif (\count($node->option) > 0) {
                     $options = $this->parseOptions($node->option);
                 } else {
-                    $options = array();
+                    $options = [];
                 }
-            } elseif (strlen((string) $node) > 0) {
-                $options = trim($node);
+            } elseif ('' !== (string) $node) {
+                $options = XmlUtils::phpize(trim($node));
             } else {
                 $options = null;
             }
@@ -115,21 +104,19 @@ class XmlFileLoader extends FileLoader
      * Parses a collection of "value" XML nodes.
      *
      * @param \SimpleXMLElement $nodes The XML nodes
-     *
-     * @return array The values
      */
-    protected function parseValues(\SimpleXMLElement $nodes)
+    protected function parseValues(\SimpleXMLElement $nodes): array
     {
-        $values = array();
+        $values = [];
 
         foreach ($nodes as $node) {
-            if (count($node) > 0) {
-                if (count($node->value) > 0) {
+            if (\count($node) > 0) {
+                if (\count($node->value) > 0) {
                     $value = $this->parseValues($node->value);
-                } elseif (count($node->constraint) > 0) {
+                } elseif (\count($node->constraint) > 0) {
                     $value = $this->parseConstraints($node->constraint);
                 } else {
-                    $value = array();
+                    $value = [];
                 }
             } else {
                 $value = trim($node);
@@ -149,25 +136,23 @@ class XmlFileLoader extends FileLoader
      * Parses a collection of "option" XML nodes.
      *
      * @param \SimpleXMLElement $nodes The XML nodes
-     *
-     * @return array The options
      */
-    protected function parseOptions(\SimpleXMLElement $nodes)
+    protected function parseOptions(\SimpleXMLElement $nodes): array
     {
-        $options = array();
+        $options = [];
 
         foreach ($nodes as $node) {
-            if (count($node) > 0) {
-                if (count($node->value) > 0) {
+            if (\count($node) > 0) {
+                if (\count($node->value) > 0) {
                     $value = $this->parseValues($node->value);
-                } elseif (count($node->constraint) > 0) {
+                } elseif (\count($node->constraint) > 0) {
                     $value = $this->parseConstraints($node->constraint);
                 } else {
-                    $value = array();
+                    $value = [];
                 }
             } else {
                 $value = XmlUtils::phpize($node);
-                if (is_string($value)) {
+                if (\is_string($value)) {
                     $value = trim($value);
                 }
             }
@@ -179,22 +164,67 @@ class XmlFileLoader extends FileLoader
     }
 
     /**
-     * Parse a XML File.
+     * Loads the XML class descriptions from the given file.
      *
-     * @param string $file Path of file
-     *
-     * @return \SimpleXMLElement
-     *
-     * @throws MappingException
+     * @throws MappingException If the file could not be loaded
      */
-    protected function parseFile($file)
+    protected function parseFile(string $path): \SimpleXMLElement
     {
         try {
-            $dom = XmlUtils::loadFile($file, __DIR__.'/schema/dic/constraint-mapping/constraint-mapping-1.0.xsd');
+            $dom = XmlUtils::loadFile($path, __DIR__.'/schema/dic/constraint-mapping/constraint-mapping-1.0.xsd');
         } catch (\Exception $e) {
             throw new MappingException($e->getMessage(), $e->getCode(), $e);
         }
 
         return simplexml_import_dom($dom);
+    }
+
+    private function loadClassesFromXml(): void
+    {
+        parent::__construct($this->file);
+
+        // This method may throw an exception. Do not modify the class'
+        // state before it completes
+        $xml = $this->parseFile($this->file);
+
+        $this->classes = [];
+
+        foreach ($xml->namespace as $namespace) {
+            $this->addNamespaceAlias((string) $namespace['prefix'], trim((string) $namespace));
+        }
+
+        foreach ($xml->class as $class) {
+            $this->classes[(string) $class['name']] = $class;
+        }
+    }
+
+    private function loadClassMetadataFromXml(ClassMetadata $metadata, \SimpleXMLElement $classDescription): void
+    {
+        if (\count($classDescription->{'group-sequence-provider'}) > 0) {
+            $metadata->setGroupProvider($classDescription->{'group-sequence-provider'}[0]->value ?: null);
+            $metadata->setGroupSequenceProvider(true);
+        }
+
+        foreach ($classDescription->{'group-sequence'} as $groupSequence) {
+            if (\count($groupSequence->value) > 0) {
+                $metadata->setGroupSequence($this->parseValues($groupSequence[0]->value));
+            }
+        }
+
+        foreach ($this->parseConstraints($classDescription->constraint) as $constraint) {
+            $metadata->addConstraint($constraint);
+        }
+
+        foreach ($classDescription->property as $property) {
+            foreach ($this->parseConstraints($property->constraint) as $constraint) {
+                $metadata->addPropertyConstraint((string) $property['name'], $constraint);
+            }
+        }
+
+        foreach ($classDescription->getter as $getter) {
+            foreach ($this->parseConstraints($getter->constraint) as $constraint) {
+                $metadata->addGetterConstraint((string) $getter['property'], $constraint);
+            }
+        }
     }
 }

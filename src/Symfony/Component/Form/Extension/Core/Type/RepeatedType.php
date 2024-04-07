@@ -12,16 +12,13 @@
 namespace Symfony\Component\Form\Extension\Core\Type;
 
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Form\Extension\Core\DataTransformer\ValueToDuplicatesTransformer;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class RepeatedType extends AbstractType
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         // Overwrite required option for child fields
         $options['first_options']['required'] = $options['required'];
@@ -31,42 +28,38 @@ class RepeatedType extends AbstractType
             $options['options']['error_bubbling'] = $options['error_bubbling'];
         }
 
+        // children fields must always be mapped
+        $defaultOptions = ['mapped' => true];
+
         $builder
-            ->addViewTransformer(new ValueToDuplicatesTransformer(array(
+            ->addViewTransformer(new ValueToDuplicatesTransformer([
                 $options['first_name'],
                 $options['second_name'],
-            )))
-            ->add($options['first_name'], $options['type'], array_merge($options['options'], $options['first_options']))
-            ->add($options['second_name'], $options['type'], array_merge($options['options'], $options['second_options']))
+            ]))
+            ->add($options['first_name'], $options['type'], array_merge($options['options'], $options['first_options'], $defaultOptions))
+            ->add($options['second_name'], $options['type'], array_merge($options['options'], $options['second_options'], $defaultOptions))
         ;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        $resolver->setDefaults(array(
-            'type' => 'text',
-            'options' => array(),
-            'first_options' => array(),
-            'second_options' => array(),
+        $resolver->setDefaults([
+            'type' => TextType::class,
+            'options' => [],
+            'first_options' => [],
+            'second_options' => [],
             'first_name' => 'first',
             'second_name' => 'second',
             'error_bubbling' => false,
-        ));
+            'invalid_message' => 'The values do not match.',
+        ]);
 
-        $resolver->setAllowedTypes(array(
-            'options' => 'array',
-            'first_options' => 'array',
-            'second_options' => 'array',
-        ));
+        $resolver->setAllowedTypes('options', 'array');
+        $resolver->setAllowedTypes('first_options', 'array');
+        $resolver->setAllowedTypes('second_options', 'array');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getBlockPrefix(): string
     {
         return 'repeated';
     }

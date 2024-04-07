@@ -11,30 +11,28 @@
 
 namespace Symfony\Component\DependencyInjection\Tests\Compiler;
 
-use Symfony\Component\DependencyInjection\Compiler\AnalyzeServiceReferencesPass;
-use Symfony\Component\DependencyInjection\Compiler\Compiler;
-use Symfony\Component\DependencyInjection\Compiler\RepeatedPass;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\Compiler\RemoveUnusedDefinitionsPass;
+use Symfony\Component\DependencyInjection\Compiler\ResolveParameterPlaceHoldersPass;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
 
-class RemoveUnusedDefinitionsPassTest extends \PHPUnit_Framework_TestCase
+class RemoveUnusedDefinitionsPassTest extends TestCase
 {
     public function testProcess()
     {
         $container = new ContainerBuilder();
         $container
             ->register('foo')
-            ->setPublic(false)
         ;
         $container
             ->register('bar')
-            ->setPublic(false)
         ;
         $container
             ->register('moo')
-            ->setArguments(array(new Reference('bar')))
+            ->setPublic(true)
+            ->setArguments([new Reference('bar')])
         ;
 
         $this->process($container);
@@ -49,12 +47,10 @@ class RemoveUnusedDefinitionsPassTest extends \PHPUnit_Framework_TestCase
         $container = new ContainerBuilder();
         $container
             ->register('foo')
-            ->setPublic(false)
         ;
         $container
             ->register('bar')
-            ->setArguments(array(new Reference('foo')))
-            ->setPublic(false)
+            ->setArguments([new Reference('foo')])
         ;
 
         $this->process($container);
@@ -68,11 +64,11 @@ class RemoveUnusedDefinitionsPassTest extends \PHPUnit_Framework_TestCase
         $container = new ContainerBuilder();
         $container
             ->register('foo')
-            ->setPublic(false)
         ;
         $container
             ->register('bar')
-            ->setArguments(array(new Definition(null, array(new Reference('foo')))))
+            ->setPublic(true)
+            ->setArguments([new Definition(null, [new Reference('foo')])])
         ;
 
         $this->process($container);
@@ -87,18 +83,18 @@ class RemoveUnusedDefinitionsPassTest extends \PHPUnit_Framework_TestCase
 
         $container
             ->register('foo', 'stdClass')
-            ->setFactoryClass('stdClass')
-            ->setFactoryMethod('getInstance')
-            ->setPublic(false);
+            ->setFactory(['stdClass', 'getInstance'])
+            ->setPublic(true)
+        ;
 
         $container
             ->register('bar', 'stdClass')
-            ->setFactoryService('foo')
-            ->setFactoryMethod('getInstance')
-            ->setPublic(false);
+            ->setFactory([new Reference('foo'), 'getInstance'])
+        ;
 
         $container
             ->register('foobar')
+            ->setPublic(true)
             ->addArgument(new Reference('bar'));
 
         $this->process($container);
@@ -108,9 +104,59 @@ class RemoveUnusedDefinitionsPassTest extends \PHPUnit_Framework_TestCase
         $this->assertTrue($container->hasDefinition('foobar'));
     }
 
+    public function testProcessConsiderEnvVariablesAsUsedEvenInPrivateServices()
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('env(FOOBAR)', 'test');
+        $container
+            ->register('foo')
+            ->setArguments(['%env(FOOBAR)%'])
+        ;
+
+        $resolvePass = new ResolveParameterPlaceHoldersPass();
+        $resolvePass->process($container);
+
+        $this->process($container);
+
+        $this->assertFalse($container->hasDefinition('foo'));
+
+        $envCounters = $container->getEnvCounters();
+        $this->assertArrayHasKey('FOOBAR', $envCounters);
+        $this->assertSame(1, $envCounters['FOOBAR']);
+    }
+
+    public function testProcessDoesNotErrorOnServicesThatDoNotHaveDefinitions()
+    {
+        $container = new ContainerBuilder();
+        $container
+            ->register('defined')
+            ->addArgument(new Reference('not.defined'))
+            ->setPublic(true);
+
+        $container->set('not.defined', new \stdClass());
+
+        $this->process($container);
+
+        $this->assertFalse($container->hasDefinition('not.defined'));
+    }
+
+    public function testProcessWorksWithClosureErrorsInDefinitions()
+    {
+        $definition = new Definition();
+        $definition->addError(fn () => 'foo bar');
+
+        $container = new ContainerBuilder();
+        $container
+            ->setDefinition('foo', $definition)
+        ;
+
+        $this->process($container);
+
+        $this->assertFalse($container->hasDefinition('foo'));
+    }
+
     protected function process(ContainerBuilder $container)
     {
-        $repeatedPass = new RepeatedPass(array(new AnalyzeServiceReferencesPass(), new RemoveUnusedDefinitionsPass()));
-        $repeatedPass->process($container);
+        (new RemoveUnusedDefinitionsPass())->process($container);
     }
 }

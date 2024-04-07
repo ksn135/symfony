@@ -12,36 +12,26 @@
 namespace Symfony\Component\Form\Extension\Core\Type;
 
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class BirthdayType extends AbstractType
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        $resolver->setDefaults(array(
-            'years' => range(date('Y') - 120, date('Y')),
-        ));
+        $resolver->setDefaults([
+            'years' => range((int) date('Y') - 120, date('Y')),
+            'invalid_message' => 'Please enter a valid birthdate.',
+        ]);
 
-        $resolver->setAllowedTypes(array(
-            'years' => 'array',
-        ));
+        $resolver->setAllowedTypes('years', 'array');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getParent()
+    public function getParent(): ?string
     {
-        return 'date';
+        return DateType::class;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getBlockPrefix(): string
     {
         return 'birthday';
     }

@@ -11,48 +11,32 @@
 
 namespace Symfony\Component\HttpKernel\Tests\CacheClearer;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpKernel\CacheClearer\CacheClearerInterface;
 use Symfony\Component\HttpKernel\CacheClearer\ChainCacheClearer;
 
-class ChainCacheClearerTest extends \PHPUnit_Framework_TestCase
+class ChainCacheClearerTest extends TestCase
 {
-    protected static $cacheDir;
+    protected static string $cacheDir;
 
-    public static function setUpBeforeClass()
+    public static function setUpBeforeClass(): void
     {
-        self::$cacheDir = tempnam(sys_get_temp_dir(), 'sf2_cache_clearer_dir');
+        self::$cacheDir = tempnam(sys_get_temp_dir(), 'sf_cache_clearer_dir');
     }
 
-    public static function tearDownAfterClass()
+    public static function tearDownAfterClass(): void
     {
         @unlink(self::$cacheDir);
     }
 
     public function testInjectClearersInConstructor()
     {
-        $clearer = $this->getMockClearer();
+        $clearer = $this->createMock(CacheClearerInterface::class);
         $clearer
             ->expects($this->once())
             ->method('clear');
 
-        $chainClearer = new ChainCacheClearer(array($clearer));
+        $chainClearer = new ChainCacheClearer([$clearer]);
         $chainClearer->clear(self::$cacheDir);
-    }
-
-    public function testInjectClearerUsingAdd()
-    {
-        $clearer = $this->getMockClearer();
-        $clearer
-            ->expects($this->once())
-            ->method('clear');
-
-        $chainClearer = new ChainCacheClearer();
-        $chainClearer->add($clearer);
-        $chainClearer->clear(self::$cacheDir);
-    }
-
-    protected function getMockClearer()
-    {
-        return $this->getMock('Symfony\Component\HttpKernel\CacheClearer\CacheClearerInterface');
     }
 }

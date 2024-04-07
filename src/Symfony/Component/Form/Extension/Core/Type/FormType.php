@@ -11,37 +11,38 @@
 
 namespace Symfony\Component\Form\Extension\Core\Type;
 
+use Symfony\Component\Form\Exception\LogicException;
+use Symfony\Component\Form\Extension\Core\DataAccessor\CallbackAccessor;
+use Symfony\Component\Form\Extension\Core\DataAccessor\ChainAccessor;
+use Symfony\Component\Form\Extension\Core\DataAccessor\PropertyPathAccessor;
+use Symfony\Component\Form\Extension\Core\DataMapper\DataMapper;
+use Symfony\Component\Form\Extension\Core\EventListener\TrimListener;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Form\FormView;
-use Symfony\Component\Form\Extension\Core\EventListener\TrimListener;
-use Symfony\Component\Form\Extension\Core\DataMapper\PropertyPathMapper;
-use Symfony\Component\Form\Exception\LogicException;
 use Symfony\Component\OptionsResolver\Options;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 use Symfony\Component\PropertyAccess\PropertyAccessorInterface;
+use Symfony\Contracts\Translation\TranslatableInterface;
 
 class FormType extends BaseType
 {
-    /**
-     * @var PropertyAccessorInterface
-     */
-    private $propertyAccessor;
+    private DataMapper $dataMapper;
 
-    public function __construct(PropertyAccessorInterface $propertyAccessor = null)
+    public function __construct(?PropertyAccessorInterface $propertyAccessor = null)
     {
-        $this->propertyAccessor = $propertyAccessor ?: PropertyAccess::createPropertyAccessor();
+        $this->dataMapper = new DataMapper(new ChainAccessor([
+            new CallbackAccessor(),
+            new PropertyPathAccessor($propertyAccessor ?? PropertyAccess::createPropertyAccessor()),
+        ]));
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         parent::buildForm($builder, $options);
 
-        $isDataOptionSet = array_key_exists('data', $options);
+        $isDataOptionSet = \array_key_exists('data', $options);
 
         $builder
             ->setRequired($options['required'])
@@ -54,24 +55,23 @@ class FormType extends BaseType
             ->setCompound($options['compound'])
             ->setData($isDataOptionSet ? $options['data'] : null)
             ->setDataLocked($isDataOptionSet)
-            ->setDataMapper($options['compound'] ? new PropertyPathMapper($this->propertyAccessor) : null)
+            ->setDataMapper($options['compound'] ? $this->dataMapper : null)
             ->setMethod($options['method'])
             ->setAction($options['action']);
 
         if ($options['trim']) {
             $builder->addEventSubscriber(new TrimListener());
         }
+
+        $builder->setIsEmptyCallback($options['is_empty_callback']);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function buildView(FormView $view, FormInterface $form, array $options)
+    public function buildView(FormView $view, FormInterface $form, array $options): void
     {
         parent::buildView($view, $form, $options);
 
         $name = $form->getName();
-        $readOnly = $options['read_only'];
+        $helpTranslationParameters = $options['help_translation_parameters'];
 
         if ($view->parent) {
             if ('' === $name) {
@@ -79,33 +79,33 @@ class FormType extends BaseType
             }
 
             // Complex fields are read-only if they themselves or their parents are.
-            if (!$readOnly) {
-                $readOnly = $view->parent->vars['read_only'];
+            if (!isset($view->vars['attr']['readonly']) && isset($view->parent->vars['attr']['readonly']) && false !== $view->parent->vars['attr']['readonly']) {
+                $view->vars['attr']['readonly'] = true;
             }
+
+            $helpTranslationParameters = array_merge($view->parent->vars['help_translation_parameters'], $helpTranslationParameters);
         }
 
-        $view->vars = array_replace($view->vars, array(
-            'read_only' => $readOnly,
+        $formConfig = $form->getConfig();
+        $view->vars = array_replace($view->vars, [
             'errors' => $form->getErrors(),
             'valid' => $form->isSubmitted() ? $form->isValid() : true,
             'value' => $form->getViewData(),
             'data' => $form->getNormData(),
             'required' => $form->isRequired(),
-            'max_length' => isset($options['attr']['maxlength']) ? $options['attr']['maxlength'] : null, // Deprecated
-            'pattern' => isset($options['attr']['pattern']) ? $options['attr']['pattern'] : null, // Deprecated
-            'size' => null,
             'label_attr' => $options['label_attr'],
-            'compound' => $form->getConfig()->getCompound(),
-            'method' => $form->getConfig()->getMethod(),
-            'action' => $form->getConfig()->getAction(),
+            'help' => $options['help'],
+            'help_attr' => $options['help_attr'],
+            'help_html' => $options['help_html'],
+            'help_translation_parameters' => $helpTranslationParameters,
+            'compound' => $formConfig->getCompound(),
+            'method' => $formConfig->getMethod(),
+            'action' => $formConfig->getAction(),
             'submitted' => $form->isSubmitted(),
-        ));
+        ]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function finishView(FormView $view, FormInterface $form, array $options)
+    public function finishView(FormView $view, FormInterface $form, array $options): void
     {
         $multipart = false;
 
@@ -119,112 +119,87 @@ class FormType extends BaseType
         $view->vars['multipart'] = $multipart;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        parent::setDefaultOptions($resolver);
+        parent::configureOptions($resolver);
 
         // Derive "data_class" option from passed "data" object
-        $dataClass = function (Options $options) {
-            return isset($options['data']) && is_object($options['data']) ? get_class($options['data']) : null;
-        };
+        $dataClass = static fn (Options $options) => isset($options['data']) && \is_object($options['data']) ? $options['data']::class : null;
 
         // Derive "empty_data" closure from "data_class" option
-        $emptyData = function (Options $options) {
+        $emptyData = static function (Options $options) {
             $class = $options['data_class'];
 
             if (null !== $class) {
-                return function (FormInterface $form) use ($class) {
-                    return $form->isEmpty() && !$form->isRequired() ? null : new $class();
-                };
+                return static fn (FormInterface $form) => $form->isEmpty() && !$form->isRequired() ? null : new $class();
             }
 
-            return function (FormInterface $form) {
-                return $form->getConfig()->getCompound() ? array() : '';
-            };
+            return static fn (FormInterface $form) => $form->getConfig()->getCompound() ? [] : '';
         };
+
+        // Wrap "post_max_size_message" in a closure to translate it lazily
+        $uploadMaxSizeMessage = static fn (Options $options) => static fn () => $options['post_max_size_message'];
 
         // For any form that is not represented by a single HTML control,
         // errors should bubble up by default
-        $errorBubbling = function (Options $options) {
-            return $options['compound'];
-        };
-
-        // BC with old "virtual" option
-        $inheritData = function (Options $options) {
-            if (null !== $options['virtual']) {
-                // Uncomment this as soon as the deprecation note should be shown
-                // trigger_error('The form option "virtual" is deprecated since version 2.3 and will be removed in 3.0. Use "inherit_data" instead.', E_USER_DEPRECATED);
-                return $options['virtual'];
-            }
-
-            return false;
-        };
+        $errorBubbling = static fn (Options $options) => $options['compound'] && !$options['inherit_data'];
 
         // If data is given, the form is locked to that data
         // (independent of its value)
-        $resolver->setOptional(array(
+        $resolver->setDefined([
             'data',
-        ));
+        ]);
 
-        // BC clause for the "max_length" and "pattern" option
-        // Add these values to the "attr" option instead
-        $defaultAttr = function (Options $options) {
-            $attributes = array();
-
-            if (null !== $options['max_length']) {
-                $attributes['maxlength'] = $options['max_length'];
-            }
-
-            if (null !== $options['pattern']) {
-                $attributes['pattern'] = $options['pattern'];
-            }
-
-            return $attributes;
-        };
-
-        $resolver->setDefaults(array(
+        $resolver->setDefaults([
             'data_class' => $dataClass,
             'empty_data' => $emptyData,
             'trim' => true,
             'required' => true,
-            'read_only' => false,
-            'max_length' => null,
-            'pattern' => null,
             'property_path' => null,
             'mapped' => true,
             'by_reference' => true,
             'error_bubbling' => $errorBubbling,
-            'label_attr' => array(),
-            'virtual' => null,
-            'inherit_data' => $inheritData,
+            'label_attr' => [],
+            'inherit_data' => false,
             'compound' => true,
             'method' => 'POST',
             // According to RFC 2396 (http://www.ietf.org/rfc/rfc2396.txt)
             // section 4.2., empty URIs are considered same-document references
             'action' => '',
-            'attr' => $defaultAttr,
             'post_max_size_message' => 'The uploaded file was too large. Please try to upload a smaller file.',
-        ));
+            'upload_max_size_message' => $uploadMaxSizeMessage, // internal
+            'allow_file_upload' => false,
+            'help' => null,
+            'help_attr' => [],
+            'help_html' => false,
+            'help_translation_parameters' => [],
+            'invalid_message' => 'This value is not valid.',
+            'invalid_message_parameters' => [],
+            'is_empty_callback' => null,
+            'getter' => null,
+            'setter' => null,
+        ]);
 
-        $resolver->setAllowedTypes(array(
-            'label_attr' => 'array',
-        ));
+        $resolver->setAllowedTypes('label_attr', 'array');
+        $resolver->setAllowedTypes('action', 'string');
+        $resolver->setAllowedTypes('upload_max_size_message', ['callable']);
+        $resolver->setAllowedTypes('help', ['string', 'null', TranslatableInterface::class]);
+        $resolver->setAllowedTypes('help_attr', 'array');
+        $resolver->setAllowedTypes('help_html', 'bool');
+        $resolver->setAllowedTypes('is_empty_callback', ['null', 'callable']);
+        $resolver->setAllowedTypes('getter', ['null', 'callable']);
+        $resolver->setAllowedTypes('setter', ['null', 'callable']);
+
+        $resolver->setInfo('getter', 'A callable that accepts two arguments (the view data and the current form field) and must return a value.');
+        $resolver->setInfo('setter', 'A callable that accepts three arguments (a reference to the view data, the submitted value and the current form field).');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getParent()
+    public function getParent(): ?string
     {
+        return null;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getBlockPrefix(): string
     {
         return 'form';
     }

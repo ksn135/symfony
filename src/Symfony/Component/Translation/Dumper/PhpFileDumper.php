@@ -20,20 +20,12 @@ use Symfony\Component\Translation\MessageCatalogue;
  */
 class PhpFileDumper extends FileDumper
 {
-    /**
-     * {@inheritdoc}
-     */
-    protected function format(MessageCatalogue $messages, $domain)
+    public function formatCatalogue(MessageCatalogue $messages, string $domain, array $options = []): string
     {
-        $output = "<?php\n\nreturn ".var_export($messages->all($domain), true).";\n";
-
-        return $output;
+        return "<?php\n\nreturn ".var_export($messages->all($domain), true).";\n";
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function getExtension()
+    protected function getExtension(): string
     {
         return 'php';
     }

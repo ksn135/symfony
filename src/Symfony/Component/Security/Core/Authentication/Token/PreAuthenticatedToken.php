@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\Security\Core\Authentication\Token;
 
+use Symfony\Component\Security\Core\User\UserInterface;
+
 /**
  * PreAuthenticatedToken implements a pre-authenticated token.
  *
@@ -18,71 +20,37 @@ namespace Symfony\Component\Security\Core\Authentication\Token;
  */
 class PreAuthenticatedToken extends AbstractToken
 {
-    private $credentials;
-    private $providerKey;
+    private string $firewallName;
 
     /**
-     * Constructor.
+     * @param string[] $roles
      */
-    public function __construct($user, $credentials, $providerKey, array $roles = array())
+    public function __construct(UserInterface $user, string $firewallName, array $roles = [])
     {
         parent::__construct($roles);
 
-        if (empty($providerKey)) {
-            throw new \InvalidArgumentException('$providerKey must not be empty.');
+        if ('' === $firewallName) {
+            throw new \InvalidArgumentException('$firewallName must not be empty.');
         }
 
         $this->setUser($user);
-        $this->credentials = $credentials;
-        $this->providerKey = $providerKey;
-
-        if ($roles) {
-            $this->setAuthenticated(true);
-        }
+        $this->firewallName = $firewallName;
     }
 
-    /**
-     * Returns the provider key.
-     *
-     * @return string The provider key
-     */
-    public function getProviderKey()
+    public function getFirewallName(): string
     {
-        return $this->providerKey;
+        return $this->firewallName;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getCredentials()
+    public function __serialize(): array
     {
-        return $this->credentials;
+        return [null, $this->firewallName, parent::__serialize()];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function eraseCredentials()
+    public function __unserialize(array $data): void
     {
-        parent::eraseCredentials();
-
-        $this->credentials = null;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function serialize()
-    {
-        return serialize(array($this->credentials, $this->providerKey, parent::serialize()));
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function unserialize($str)
-    {
-        list($this->credentials, $this->providerKey, $parentStr) = unserialize($str);
-        parent::unserialize($parentStr);
+        [, $this->firewallName, $parentData] = $data;
+        $parentData = \is_array($parentData) ? $parentData : unserialize($parentData);
+        parent::__unserialize($parentData);
     }
 }

@@ -13,7 +13,8 @@ namespace Symfony\Component\Form\Extension\Validator\Type;
 
 use Symfony\Component\Form\AbstractTypeExtension;
 use Symfony\Component\OptionsResolver\Options;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints\GroupSequence;
 
 /**
  * Encapsulates common logic of {@link FormTypeValidatorExtension} and
@@ -23,34 +24,33 @@ use Symfony\Component\OptionsResolver\OptionsResolverInterface;
  */
 abstract class BaseValidatorExtension extends AbstractTypeExtension
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
         // Make sure that validation groups end up as null, closure or array
-        $validationGroupsNormalizer = function (Options $options, $groups) {
+        $validationGroupsNormalizer = static function (Options $options, $groups) {
             if (false === $groups) {
-                return array();
+                return [];
             }
 
-            if (empty($groups)) {
-                return;
+            if (!$groups) {
+                return null;
             }
 
-            if (is_callable($groups)) {
+            if (\is_callable($groups)) {
+                return $groups;
+            }
+
+            if ($groups instanceof GroupSequence) {
                 return $groups;
             }
 
             return (array) $groups;
         };
 
-        $resolver->setDefaults(array(
+        $resolver->setDefaults([
             'validation_groups' => null,
-        ));
+        ]);
 
-        $resolver->setNormalizers(array(
-            'validation_groups' => $validationGroupsNormalizer,
-        ));
+        $resolver->setNormalizer('validation_groups', $validationGroupsNormalizer);
     }
 }

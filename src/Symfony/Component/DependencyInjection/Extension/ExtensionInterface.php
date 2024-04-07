@@ -17,38 +17,31 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
  * ExtensionInterface is the interface implemented by container extension classes.
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 interface ExtensionInterface
 {
     /**
      * Loads a specific configuration.
      *
-     * @param array            $config    An array of configuration values
-     * @param ContainerBuilder $container A ContainerBuilder instance
+     * @param array<array<mixed>> $configs
+     *
+     * @return void
      *
      * @throws \InvalidArgumentException When provided tag is not defined in this extension
-     *
-     * @api
      */
-    public function load(array $config, ContainerBuilder $container);
+    public function load(array $configs, ContainerBuilder $container);
 
     /**
      * Returns the namespace to be used for this extension (XML namespace).
      *
-     * @return string The XML namespace
-     *
-     * @api
+     * @return string
      */
     public function getNamespace();
 
     /**
      * Returns the base path for the XSD files.
      *
-     * @return string The XSD base path
-     *
-     * @api
+     * @return string|false
      */
     public function getXsdValidationBasePath();
 
@@ -57,9 +50,7 @@ interface ExtensionInterface
      *
      * This alias is also the mandatory prefix to use when using YAML.
      *
-     * @return string The alias
-     *
-     * @api
+     * @return string
      */
     public function getAlias();
 }

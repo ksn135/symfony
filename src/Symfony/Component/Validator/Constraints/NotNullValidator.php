@@ -17,22 +17,20 @@ use Symfony\Component\Validator\Exception\UnexpectedTypeException;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
- *
- * @api
  */
 class NotNullValidator extends ConstraintValidator
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function validate($value, Constraint $constraint)
+    public function validate(mixed $value, Constraint $constraint): void
     {
         if (!$constraint instanceof NotNull) {
-            throw new UnexpectedTypeException($constraint, __NAMESPACE__.'\NotNull');
+            throw new UnexpectedTypeException($constraint, NotNull::class);
         }
 
         if (null === $value) {
-            $this->context->addViolation($constraint->message);
+            $this->context->buildViolation($constraint->message)
+                ->setParameter('{{ value }}', $this->formatValue($value))
+                ->setCode(NotNull::IS_NULL_ERROR)
+                ->addViolation();
         }
     }
 }

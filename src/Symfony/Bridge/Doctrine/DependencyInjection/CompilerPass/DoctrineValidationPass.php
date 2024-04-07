@@ -11,31 +11,22 @@
 
 namespace Symfony\Bridge\Doctrine\DependencyInjection\CompilerPass;
 
-use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
-use Symfony\Component\Config\Resource\FileResource;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 /**
- * Registers additional validators
+ * Registers additional validators.
  *
  * @author Benjamin Eberlei <kontakt@beberlei.de>
  */
 class DoctrineValidationPass implements CompilerPassInterface
 {
-    /**
-     * @var string
-     */
-    private $managerType;
-
-    public function __construct($managerType)
-    {
-        $this->managerType = $managerType;
+    public function __construct(
+        private readonly string $managerType,
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function process(ContainerBuilder $container)
+    public function process(ContainerBuilder $container): void
     {
         $this->updateValidatorMappingFiles($container, 'xml', 'xml');
         $this->updateValidatorMappingFiles($container, 'yaml', 'yml');
@@ -43,26 +34,20 @@ class DoctrineValidationPass implements CompilerPassInterface
 
     /**
      * Gets the validation mapping files for the format and extends them with
-     * files matching a doctrine search pattern (Resources/config/validation.orm.xml)
-     *
-     * @param ContainerBuilder $container
-     * @param string           $mapping
-     * @param string           $extension
+     * files matching a doctrine search pattern (Resources/config/validation.orm.xml).
      */
-    private function updateValidatorMappingFiles(ContainerBuilder $container, $mapping, $extension)
+    private function updateValidatorMappingFiles(ContainerBuilder $container, string $mapping, string $extension): void
     {
         if (!$container->hasParameter('validator.mapping.loader.'.$mapping.'_files_loader.mapping_files')) {
             return;
         }
 
         $files = $container->getParameter('validator.mapping.loader.'.$mapping.'_files_loader.mapping_files');
-        $validationPath = 'Resources/config/validation.'.$this->managerType.'.'.$extension;
+        $validationPath = '/config/validation.'.$this->managerType.'.'.$extension;
 
-        foreach ($container->getParameter('kernel.bundles') as $bundle) {
-            $reflection = new \ReflectionClass($bundle);
-            if (is_file($file = dirname($reflection->getFilename()).'/'.$validationPath)) {
-                $files[] = realpath($file);
-                $container->addResource(new FileResource($file));
+        foreach ($container->getParameter('kernel.bundles_metadata') as $bundle) {
+            if ($container->fileExists($file = $bundle['path'].'/Resources'.$validationPath) || $container->fileExists($file = $bundle['path'].$validationPath)) {
+                $files[] = $file;
             }
         }
 

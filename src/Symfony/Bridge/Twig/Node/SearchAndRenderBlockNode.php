@@ -11,19 +11,24 @@
 
 namespace Symfony\Bridge\Twig\Node;
 
+use Twig\Compiler;
+use Twig\Extension\CoreExtension;
+use Twig\Node\Expression\ArrayExpression;
+use Twig\Node\Expression\ConstantExpression;
+use Twig\Node\Expression\FunctionExpression;
+
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class SearchAndRenderBlockNode extends \Twig_Node_Expression_Function
+final class SearchAndRenderBlockNode extends FunctionExpression
 {
-    public function compile(\Twig_Compiler $compiler)
+    public function compile(Compiler $compiler): void
     {
         $compiler->addDebugInfo($this);
-        $compiler->raw('$this->env->getExtension(\'form\')->renderer->searchAndRenderBlock(');
+        $compiler->raw('$this->env->getRuntime(\'Symfony\Component\Form\FormRenderer\')->searchAndRenderBlock(');
 
         preg_match('/_([^_]+)$/', $this->getAttribute('name'), $matches);
 
-        $label = null;
         $arguments = iterator_to_array($this->getNode('arguments'));
         $blockNameSuffix = $matches[1];
 
@@ -36,20 +41,20 @@ class SearchAndRenderBlockNode extends \Twig_Node_Expression_Function
                     // The "label" function expects the label in the second and
                     // the variables in the third argument
                     $label = $arguments[1];
-                    $variables = isset($arguments[2]) ? $arguments[2] : null;
-                    $lineno = $label->getLine();
+                    $variables = $arguments[2] ?? null;
+                    $lineno = $label->getTemplateLine();
 
-                    if ($label instanceof \Twig_Node_Expression_Constant) {
+                    if ($label instanceof ConstantExpression) {
                         // If the label argument is given as a constant, we can either
                         // strip it away if it is empty, or integrate it into the array
                         // of variables at compile time.
                         $labelIsExpression = false;
 
                         // Only insert the label into the array if it is not empty
-                        if (!twig_test_empty($label->getAttribute('value'))) {
+                        if (null !== $label->getAttribute('value') && false !== $label->getAttribute('value') && '' !== (string) $label->getAttribute('value')) {
                             $originalVariables = $variables;
-                            $variables = new \Twig_Node_Expression_Array(array(), $lineno);
-                            $labelKey = new \Twig_Node_Expression_Constant('label', $lineno);
+                            $variables = new ArrayExpression([], $lineno);
+                            $labelKey = new ConstantExpression('label', $lineno);
 
                             if (null !== $originalVariables) {
                                 foreach ($originalVariables->getKeyValuePairs() as $pair) {
@@ -93,14 +98,19 @@ class SearchAndRenderBlockNode extends \Twig_Node_Expression_Function
 
                         // Check at runtime whether the label is empty.
                         // If not, add it to the array at runtime.
-                        $compiler->raw('(twig_test_empty($_label_ = ');
+                        if (method_exists(CoreExtension::class, 'testEmpty')) {
+                            $compiler->raw('(CoreExtension::testEmpty($_label_ = ');
+                        } else {
+                            $compiler->raw('(twig_test_empty($_label_ = ');
+                        }
+
                         $compiler->subcompile($label);
-                        $compiler->raw(') ? array() : array("label" => $_label_))');
+                        $compiler->raw(') ? [] : ["label" => $_label_])');
                     }
                 }
             }
         }
 
-        $compiler->raw(")");
+        $compiler->raw(')');
     }
 }

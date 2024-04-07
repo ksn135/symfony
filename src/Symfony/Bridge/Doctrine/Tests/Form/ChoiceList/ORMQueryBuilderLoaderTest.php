@@ -11,66 +11,271 @@
 
 namespace Symfony\Bridge\Doctrine\Tests\Form\ChoiceList;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Types\GuidType;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\ORM\AbstractQuery;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\QueryBuilder;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\Doctrine\Form\ChoiceList\ORMQueryBuilderLoader;
-use Symfony\Bridge\Doctrine\Tests\DoctrineOrmTestCase;
-use Doctrine\DBAL\Connection;
+use Symfony\Bridge\Doctrine\Tests\DoctrineTestHelper;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\EmbeddedIdentifierEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\LegacyQueryMock;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringIdEntity;
+use Symfony\Bridge\Doctrine\Types\UlidType;
+use Symfony\Bridge\Doctrine\Types\UuidType;
+use Symfony\Component\Form\Exception\TransformationFailedException;
+use Symfony\Component\Uid\Uuid;
 
-class ORMQueryBuilderLoaderTest extends DoctrineOrmTestCase
+class ORMQueryBuilderLoaderTest extends TestCase
 {
-    /**
-     * @expectedException \Symfony\Component\Form\Exception\UnexpectedTypeException
-     */
-    public function testItOnlyWorksWithQueryBuilderOrClosure()
+    protected function tearDown(): void
     {
-        new ORMQueryBuilderLoader(new \stdClass());
-    }
-
-    /**
-     * @expectedException \Symfony\Component\Form\Exception\UnexpectedTypeException
-     */
-    public function testClosureRequiresTheEntityManager()
-    {
-        $closure = function () {};
-
-        new ORMQueryBuilderLoader($closure);
+        if (Type::hasType('uuid')) {
+            Type::overrideType('uuid', GuidType::class);
+        }
     }
 
     public function testIdentifierTypeIsStringArray()
     {
-        $this->checkIdentifierType('Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringIdEntity', Connection::PARAM_STR_ARRAY);
+        $this->checkIdentifierType(SingleStringIdEntity::class, ArrayParameterType::STRING);
     }
 
     public function testIdentifierTypeIsIntegerArray()
     {
-        $this->checkIdentifierType('Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity', Connection::PARAM_INT_ARRAY);
+        $this->checkIdentifierType(SingleIntIdEntity::class, ArrayParameterType::INTEGER);
     }
 
-    protected function checkIdentifierType($classname, $expectedType)
+    protected function checkIdentifierType(string $classname, $expectedType)
     {
-        $em = $this->createTestEntityManager();
+        $em = DoctrineTestHelper::createTestEntityManager();
 
-        $query = $this->getMockBuilder('QueryMock')
-            ->setMethods(array('setParameter', 'getResult', 'getSql', '_doExecute'))
-            ->getMock();
+        $query = $this->getQueryMock();
+
+        $query
+            ->method('getResult')
+            ->willReturn([]);
 
         $query->expects($this->once())
             ->method('setParameter')
-            ->with('ORMQueryBuilderLoader_getEntitiesByIds_id', array(), $expectedType)
-            ->will($this->returnValue($query));
+            ->with('ORMQueryBuilderLoader_getEntitiesByIds_id', [1, 2], $expectedType)
+            ->willReturn($query);
 
-        $qb = $this->getMockBuilder('Doctrine\ORM\QueryBuilder')
-            ->setConstructorArgs(array($em))
-            ->setMethods(array('getQuery'))
+        $qb = $this->getMockBuilder(QueryBuilder::class)
+            ->setConstructorArgs([$em])
+            ->onlyMethods(['getQuery'])
             ->getMock();
 
         $qb->expects($this->once())
             ->method('getQuery')
-            ->will($this->returnValue($query));
+            ->willReturn($query);
 
         $qb->select('e')
             ->from($classname, 'e');
 
         $loader = new ORMQueryBuilderLoader($qb);
-        $loader->getEntitiesByIds('id', array());
+        $loader->getEntitiesByIds('id', [1, 2]);
+    }
+
+    public function testFilterNonIntegerValues()
+    {
+        $em = DoctrineTestHelper::createTestEntityManager();
+
+        $query = $this->getQueryMock();
+
+        $query
+            ->method('getResult')
+            ->willReturn([]);
+
+        $query->expects($this->once())
+            ->method('setParameter')
+            ->with('ORMQueryBuilderLoader_getEntitiesByIds_id', [1, 2, 3, '9223372036854775808'], ArrayParameterType::INTEGER)
+            ->willReturn($query);
+
+        $qb = $this->getMockBuilder(QueryBuilder::class)
+            ->setConstructorArgs([$em])
+            ->onlyMethods(['getQuery'])
+            ->getMock();
+
+        $qb->expects($this->once())
+            ->method('getQuery')
+            ->willReturn($query);
+
+        $qb->select('e')
+            ->from('Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity', 'e');
+
+        $loader = new ORMQueryBuilderLoader($qb);
+        $loader->getEntitiesByIds('id', [1, '', 2, 3, 'foo', '9223372036854775808']);
+    }
+
+    /**
+     * @dataProvider provideGuidEntityClasses
+     */
+    public function testFilterEmptyUuids(string $entityClass)
+    {
+        $em = DoctrineTestHelper::createTestEntityManager();
+
+        $query = $this->getQueryMock();
+
+        $query
+            ->method('getResult')
+            ->willReturn([]);
+
+        $query->expects($this->once())
+            ->method('setParameter')
+            ->with('ORMQueryBuilderLoader_getEntitiesByIds_id', ['71c5fd46-3f16-4abb-bad7-90ac1e654a2d', 'b98e8e11-2897-44df-ad24-d2627eb7f499'], ArrayParameterType::STRING)
+            ->willReturn($query);
+
+        $qb = $this->getMockBuilder(QueryBuilder::class)
+            ->setConstructorArgs([$em])
+            ->onlyMethods(['getQuery'])
+            ->getMock();
+
+        $qb->expects($this->once())
+            ->method('getQuery')
+            ->willReturn($query);
+
+        $qb->select('e')
+            ->from($entityClass, 'e');
+
+        $loader = new ORMQueryBuilderLoader($qb);
+        $loader->getEntitiesByIds('id', ['71c5fd46-3f16-4abb-bad7-90ac1e654a2d', '', 'b98e8e11-2897-44df-ad24-d2627eb7f499']);
+    }
+
+    /**
+     * @dataProvider provideUidEntityClasses
+     */
+    public function testFilterUid(string $entityClass)
+    {
+        if (Type::hasType('uuid')) {
+            Type::overrideType('uuid', UuidType::class);
+        } else {
+            Type::addType('uuid', UuidType::class);
+        }
+        if (!Type::hasType('ulid')) {
+            Type::addType('ulid', UlidType::class);
+        }
+
+        $em = DoctrineTestHelper::createTestEntityManager();
+
+        $query = $this->getQueryMock();
+
+        $query
+            ->method('getResult')
+            ->willReturn([]);
+
+        $query->expects($this->once())
+            ->method('setParameter')
+            ->with('ORMQueryBuilderLoader_getEntitiesByIds_id', [Uuid::fromString('71c5fd46-3f16-4abb-bad7-90ac1e654a2d')->toBinary(), Uuid::fromString('b98e8e11-2897-44df-ad24-d2627eb7f499')->toBinary()], ArrayParameterType::STRING)
+            ->willReturn($query);
+
+        $qb = $this->getMockBuilder(QueryBuilder::class)
+            ->setConstructorArgs([$em])
+            ->onlyMethods(['getQuery'])
+            ->getMock();
+
+        $qb->expects($this->once())
+            ->method('getQuery')
+            ->willReturn($query);
+
+        $qb->select('e')
+            ->from($entityClass, 'e');
+
+        $loader = new ORMQueryBuilderLoader($qb);
+        $loader->getEntitiesByIds('id', ['71c5fd46-3f16-4abb-bad7-90ac1e654a2d', '', 'b98e8e11-2897-44df-ad24-d2627eb7f499']);
+    }
+
+    /**
+     * @dataProvider provideUidEntityClasses
+     */
+    public function testUidThrowProperException(string $entityClass)
+    {
+        if (Type::hasType('uuid')) {
+            Type::overrideType('uuid', UuidType::class);
+        } else {
+            Type::addType('uuid', UuidType::class);
+        }
+        if (!Type::hasType('ulid')) {
+            Type::addType('ulid', UlidType::class);
+        }
+
+        $em = DoctrineTestHelper::createTestEntityManager();
+
+        $qb = $this->getMockBuilder(QueryBuilder::class)
+            ->setConstructorArgs([$em])
+            ->onlyMethods(['getQuery'])
+            ->getMock();
+
+        $qb->expects($this->never())
+            ->method('getQuery');
+
+        $qb->select('e')
+            ->from($entityClass, 'e');
+
+        $loader = new ORMQueryBuilderLoader($qb);
+
+        $this->expectException(TransformationFailedException::class);
+        $this->expectExceptionMessageMatches('/^Failed to transform "hello" into "(uuid|ulid)"\.$/');
+
+        $loader->getEntitiesByIds('id', ['hello']);
+    }
+
+    public function testEmbeddedIdentifierName()
+    {
+        $em = DoctrineTestHelper::createTestEntityManager();
+
+        $query = $this->getQueryMock();
+
+        $query
+            ->method('getResult')
+            ->willReturn([]);
+
+        $query->expects($this->once())
+            ->method('setParameter')
+            ->with('ORMQueryBuilderLoader_getEntitiesByIds_id_value', [1, 2, 3], ArrayParameterType::INTEGER)
+            ->willReturn($query);
+
+        $qb = $this->getMockBuilder(QueryBuilder::class)
+            ->setConstructorArgs([$em])
+            ->onlyMethods(['getQuery'])
+            ->getMock();
+        $qb->expects($this->once())
+            ->method('getQuery')
+            ->willReturn($query);
+
+        $qb->select('e')
+            ->from(EmbeddedIdentifierEntity::class, 'e');
+
+        $loader = new ORMQueryBuilderLoader($qb);
+        $loader->getEntitiesByIds('id.value', [1, '', 2, 3, 'foo']);
+    }
+
+    public static function provideGuidEntityClasses(): array
+    {
+        return [
+            ['Symfony\Bridge\Doctrine\Tests\Fixtures\GuidIdEntity'],
+            ['Symfony\Bridge\Doctrine\Tests\Fixtures\UuidIdEntity'],
+        ];
+    }
+
+    public static function provideUidEntityClasses(): array
+    {
+        return [
+            ['Symfony\Bridge\Doctrine\Tests\Fixtures\UuidIdEntity'],
+            ['Symfony\Bridge\Doctrine\Tests\Fixtures\UlidIdEntity'],
+        ];
+    }
+
+    /**
+     * @return (LegacyQueryMock&MockObject)|(Query&MockObject)
+     */
+    private function getQueryMock(): AbstractQuery
+    {
+        $class = ((new \ReflectionClass(Query::class))->isFinal()) ? LegacyQueryMock::class : Query::class;
+
+        return $this->createMock($class);
     }
 }

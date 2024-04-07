@@ -11,69 +11,51 @@
 
 namespace Symfony\Component\Form\Extension\Validator;
 
-use Symfony\Component\Form\Exception\UnexpectedTypeException;
-use Symfony\Component\Form\Extension\Validator\Constraints\Form;
 use Symfony\Component\Form\AbstractExtension;
-use Symfony\Component\Validator\Constraints\Valid;
+use Symfony\Component\Form\Extension\Validator\Constraints\Form;
+use Symfony\Component\Form\FormRendererInterface;
+use Symfony\Component\Form\FormTypeGuesserInterface;
+use Symfony\Component\Validator\Constraints\Traverse;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Symfony\Component\Validator\ValidatorInterface as LegacyValidatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
- * Extension supporting the Symfony2 Validator component in forms.
+ * Extension supporting the Symfony Validator component in forms.
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
 class ValidatorExtension extends AbstractExtension
 {
-    private $validator;
-
-    /**
-     * @param ValidatorInterface|LegacyValidatorInterface $validator
-     *
-     * @throws UnexpectedTypeException If $validator is invalid
-     */
-    public function __construct($validator)
-    {
-        // 2.5 API
-        if ($validator instanceof ValidatorInterface) {
-            $metadata = $validator->getMetadataFor('Symfony\Component\Form\Form');
-        // 2.4 API
-        } elseif ($validator instanceof LegacyValidatorInterface) {
-            $metadata = $validator->getMetadataFactory()->getMetadataFor('Symfony\Component\Form\Form');
-        } else {
-            throw new UnexpectedTypeException($validator, 'Symfony\Component\Validator\Validator\ValidatorInterface or Symfony\Component\Validator\ValidatorInterface');
-        }
+    public function __construct(
+        private ValidatorInterface $validator,
+        private bool $legacyErrorMessages = true,
+        private ?FormRendererInterface $formRenderer = null,
+        private ?TranslatorInterface $translator = null,
+    ) {
+        $metadata = $validator->getMetadataFor(\Symfony\Component\Form\Form::class);
 
         // Register the form constraints in the validator programmatically.
         // This functionality is required when using the Form component without
         // the DIC, where the XML file is loaded automatically. Thus the following
         // code must be kept synchronized with validation.xml
 
-        /** @var $metadata ClassMetadata */
+        /* @var $metadata ClassMetadata */
         $metadata->addConstraint(new Form());
-        $metadata->addPropertyConstraint('children', new Valid());
-
-        $this->validator = $validator;
+        $metadata->addConstraint(new Traverse(false));
     }
 
-    public function loadTypeGuesser()
+    public function loadTypeGuesser(): ?FormTypeGuesserInterface
     {
-        // 2.4 API
-        if ($this->validator instanceof LegacyValidatorInterface) {
-            return new ValidatorTypeGuesser($this->validator->getMetadataFactory());
-        }
-
-        // 2.5 API - ValidatorInterface extends MetadataFactoryInterface
         return new ValidatorTypeGuesser($this->validator);
     }
 
-    protected function loadTypeExtensions()
+    protected function loadTypeExtensions(): array
     {
-        return array(
-            new Type\FormTypeValidatorExtension($this->validator),
+        return [
+            new Type\FormTypeValidatorExtension($this->validator, $this->legacyErrorMessages, $this->formRenderer, $this->translator),
             new Type\RepeatedTypeValidatorExtension(),
             new Type\SubmitTypeValidatorExtension(),
-        );
+        ];
     }
 }

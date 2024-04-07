@@ -12,9 +12,8 @@
 namespace Symfony\Bundle\FrameworkBundle\Tests\Functional\Bundle\TestBundle\Controller;
 
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\DependencyInjection\ContainerAware;
 
-class ProfilerController extends ContainerAware
+class ProfilerController
 {
     public function indexAction()
     {

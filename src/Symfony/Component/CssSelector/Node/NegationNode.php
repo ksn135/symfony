@@ -14,61 +14,37 @@ namespace Symfony\Component\CssSelector\Node;
 /**
  * Represents a "<selector>:not(<identifier>)" node.
  *
- * This component is a port of the Python cssselector library,
+ * This component is a port of the Python cssselect library,
  * which is copyright Ian Bicking, @see https://github.com/SimonSapin/cssselect.
  *
  * @author Jean-François Simon <jeanfrancois.simon@sensiolabs.com>
+ *
+ * @internal
  */
 class NegationNode extends AbstractNode
 {
-    /**
-     * @var NodeInterface
-     */
-    private $selector;
-
-    /**
-     * @var NodeInterface
-     */
-    private $subSelector;
-
-    /**
-     * @param NodeInterface $selector
-     * @param NodeInterface $subSelector
-     */
-    public function __construct(NodeInterface $selector, NodeInterface $subSelector)
-    {
-        $this->selector = $selector;
-        $this->subSelector = $subSelector;
+    public function __construct(
+        private NodeInterface $selector,
+        private NodeInterface $subSelector,
+    ) {
     }
 
-    /**
-     * @return NodeInterface
-     */
-    public function getSelector()
+    public function getSelector(): NodeInterface
     {
         return $this->selector;
     }
 
-    /**
-     * @return NodeInterface
-     */
-    public function getSubSelector()
+    public function getSubSelector(): NodeInterface
     {
         return $this->subSelector;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getSpecificity()
+    public function getSpecificity(): Specificity
     {
         return $this->selector->getSpecificity()->plus($this->subSelector->getSpecificity());
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function __toString()
+    public function __toString(): string
     {
         return sprintf('%s[%s:not(%s)]', $this->getNodeName(), $this->selector, $this->subSelector);
     }

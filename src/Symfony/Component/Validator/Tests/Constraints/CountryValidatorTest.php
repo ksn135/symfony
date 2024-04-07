@@ -14,23 +14,28 @@ namespace Symfony\Component\Validator\Tests\Constraints;
 use Symfony\Component\Intl\Util\IntlTestHelper;
 use Symfony\Component\Validator\Constraints\Country;
 use Symfony\Component\Validator\Constraints\CountryValidator;
-use Symfony\Component\Validator\Validation;
+use Symfony\Component\Validator\Exception\UnexpectedValueException;
+use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
 
-class CountryValidatorTest extends AbstractConstraintValidatorTest
+class CountryValidatorTest extends ConstraintValidatorTestCase
 {
-    protected function setUp()
-    {
-        IntlTestHelper::requireFullIntl($this);
+    private string $defaultLocale;
 
+    protected function setUp(): void
+    {
         parent::setUp();
+
+        $this->defaultLocale = \Locale::getDefault();
     }
 
-    protected function getApiVersion()
+    protected function tearDown(): void
     {
-        return Validation::API_VERSION_2_5;
+        parent::tearDown();
+
+        \Locale::setDefault($this->defaultLocale);
     }
 
-    protected function createValidator()
+    protected function createValidator(): CountryValidator
     {
         return new CountryValidator();
     }
@@ -49,11 +54,9 @@ class CountryValidatorTest extends AbstractConstraintValidatorTest
         $this->assertNoViolation();
     }
 
-    /**
-     * @expectedException \Symfony\Component\Validator\Exception\UnexpectedTypeException
-     */
     public function testExpectsStringCompatibleType()
     {
+        $this->expectException(UnexpectedValueException::class);
         $this->validator->validate(new \stdClass(), new Country());
     }
 
@@ -67,13 +70,13 @@ class CountryValidatorTest extends AbstractConstraintValidatorTest
         $this->assertNoViolation();
     }
 
-    public function getValidCountries()
+    public static function getValidCountries()
     {
-        return array(
-            array('GB'),
-            array('AT'),
-            array('MY'),
-        );
+        return [
+            ['GB'],
+            ['AT'],
+            ['MY'],
+        ];
     }
 
     /**
@@ -81,29 +84,92 @@ class CountryValidatorTest extends AbstractConstraintValidatorTest
      */
     public function testInvalidCountries($country)
     {
-        $constraint = new Country(array(
+        $constraint = new Country([
             'message' => 'myMessage',
-        ));
+        ]);
 
         $this->validator->validate($country, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"'.$country.'"')
+            ->setCode(Country::NO_SUCH_COUNTRY_ERROR)
             ->assertRaised();
     }
 
-    public function getInvalidCountries()
+    public static function getInvalidCountries()
     {
-        return array(
-            array('foobar'),
-            array('EN'),
+        return [
+            ['foobar'],
+            ['EN'],
+        ];
+    }
+
+    /**
+     * @dataProvider getValidAlpha3Countries
+     */
+    public function testValidAlpha3Countries($country)
+    {
+        $this->validator->validate($country, new Country([
+            'alpha3' => true,
+        ]));
+
+        $this->assertNoViolation();
+    }
+
+    public static function getValidAlpha3Countries()
+    {
+        return [
+            ['GBR'],
+            ['ATA'],
+            ['MYT'],
+        ];
+    }
+
+    /**
+     * @dataProvider getInvalidAlpha3Countries
+     */
+    public function testInvalidAlpha3Countries($country)
+    {
+        $constraint = new Country([
+            'alpha3' => true,
+            'message' => 'myMessage',
+        ]);
+
+        $this->validator->validate($country, $constraint);
+
+        $this->buildViolation('myMessage')
+            ->setParameter('{{ value }}', '"'.$country.'"')
+            ->setCode(Country::NO_SUCH_COUNTRY_ERROR)
+            ->assertRaised();
+    }
+
+    public static function getInvalidAlpha3Countries()
+    {
+        return [
+            ['foobar'],
+            ['GB'],
+            ['ZZZ'],
+            ['zzz'],
+        ];
+    }
+
+    public function testInvalidAlpha3CountryNamed()
+    {
+        $this->validator->validate(
+            'DE',
+            new Country(alpha3: true, message: 'myMessage')
         );
+
+        $this->buildViolation('myMessage')
+            ->setParameter('{{ value }}', '"DE"')
+            ->setCode(Country::NO_SUCH_COUNTRY_ERROR)
+            ->assertRaised();
     }
 
     public function testValidateUsingCountrySpecificLocale()
     {
         // in order to test with "en_GB"
-        IntlTestHelper::requireFullIntl($this);
+        IntlTestHelper::requireFullIntl($this, false);
 
         \Locale::setDefault('en_GB');
 

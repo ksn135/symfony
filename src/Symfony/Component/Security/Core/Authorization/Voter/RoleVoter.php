@@ -18,62 +18,46 @@ use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
  *
  * @author Fabien Potencier <fabien@symfony.com>
  */
-class RoleVoter implements VoterInterface
+class RoleVoter implements CacheableVoterInterface
 {
-    private $prefix;
+    private string $prefix;
 
-    /**
-     * Constructor.
-     *
-     * @param string $prefix The role prefix
-     */
-    public function __construct($prefix = 'ROLE_')
+    public function __construct(string $prefix = 'ROLE_')
     {
         $this->prefix = $prefix;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function supportsAttribute($attribute)
-    {
-        return 0 === strpos($attribute, $this->prefix);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function supportsClass($class)
-    {
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function vote(TokenInterface $token, $object, array $attributes)
+    public function vote(TokenInterface $token, mixed $subject, array $attributes): int
     {
         $result = VoterInterface::ACCESS_ABSTAIN;
         $roles = $this->extractRoles($token);
 
         foreach ($attributes as $attribute) {
-            if (!$this->supportsAttribute($attribute)) {
+            if (!\is_string($attribute) || !str_starts_with($attribute, $this->prefix)) {
                 continue;
             }
 
             $result = VoterInterface::ACCESS_DENIED;
-            foreach ($roles as $role) {
-                if ($attribute === $role->getRole()) {
-                    return VoterInterface::ACCESS_GRANTED;
-                }
+            if (\in_array($attribute, $roles, true)) {
+                return VoterInterface::ACCESS_GRANTED;
             }
         }
 
         return $result;
     }
 
-    protected function extractRoles(TokenInterface $token)
+    public function supportsAttribute(string $attribute): bool
     {
-        return $token->getRoles();
+        return str_starts_with($attribute, $this->prefix);
+    }
+
+    public function supportsType(string $subjectType): bool
+    {
+        return true;
+    }
+
+    protected function extractRoles(TokenInterface $token): array
+    {
+        return $token->getRoleNames();
     }
 }

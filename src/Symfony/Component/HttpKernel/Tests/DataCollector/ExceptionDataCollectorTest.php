@@ -11,29 +11,49 @@
 
 namespace Symfony\Component\HttpKernel\Tests\DataCollector;
 
-use Symfony\Component\HttpKernel\DataCollector\ExceptionDataCollector;
-use Symfony\Component\HttpKernel\Exception\FlattenException;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\ErrorHandler\Exception\FlattenException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\DataCollector\ExceptionDataCollector;
 
-class ExceptionDataCollectorTest extends \PHPUnit_Framework_TestCase
+class ExceptionDataCollectorTest extends TestCase
 {
     public function testCollect()
     {
-        $e = new \Exception('foo',500);
+        $e = new \Exception('foo', 500);
         $c = new ExceptionDataCollector();
-        $flattened = FlattenException::create($e);
+        $flattened = FlattenException::createWithDataRepresentation($e);
         $trace = $flattened->getTrace();
 
         $this->assertFalse($c->hasException());
 
-        $c->collect(new Request(), new Response(),$e);
+        $c->collect(new Request(), new Response(), $e);
 
         $this->assertTrue($c->hasException());
-        $this->assertEquals($flattened,$c->getException());
-        $this->assertSame('foo',$c->getMessage());
-        $this->assertSame(500,$c->getCode());
-        $this->assertSame('exception',$c->getName());
-        $this->assertSame($trace,$c->getTrace());
+        $this->assertEquals($flattened, $c->getException());
+        $this->assertSame('foo', $c->getMessage());
+        $this->assertSame(500, $c->getCode());
+        $this->assertSame('exception', $c->getName());
+        $this->assertSame($trace, $c->getTrace());
+    }
+
+    public function testCollectWithoutException()
+    {
+        $c = new ExceptionDataCollector();
+        $c->collect(new Request(), new Response());
+
+        $this->assertFalse($c->hasException());
+    }
+
+    public function testReset()
+    {
+        $c = new ExceptionDataCollector();
+
+        $c->collect(new Request(), new Response(), new \Exception());
+        $c->reset();
+        $c->collect(new Request(), new Response());
+
+        $this->assertFalse($c->hasException());
     }
 }

@@ -11,18 +11,23 @@
 
 namespace Symfony\Bridge\Twig\Tests\NodeVisitor;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\Twig\NodeVisitor\TranslationDefaultDomainNodeVisitor;
 use Symfony\Bridge\Twig\NodeVisitor\TranslationNodeVisitor;
+use Twig\Environment;
+use Twig\Loader\LoaderInterface;
+use Twig\Node\Expression\ArrayExpression;
+use Twig\Node\Node;
 
-class TranslationDefaultDomainNodeVisitorTest extends \PHPUnit_Framework_TestCase
+class TranslationDefaultDomainNodeVisitorTest extends TestCase
 {
-    private static $message = 'message';
-    private static $domain = 'domain';
+    private static string $message = 'message';
+    private static string $domain = 'domain';
 
     /** @dataProvider getDefaultDomainAssignmentTestData */
-    public function testDefaultDomainAssignment(\Twig_Node $node)
+    public function testDefaultDomainAssignment(Node $node)
     {
-        $env = new \Twig_Environment(new \Twig_Loader_String(), array('cache' => false, 'autoescape' => false, 'optimizations' => 0));
+        $env = new Environment($this->createMock(LoaderInterface::class), ['cache' => false, 'autoescape' => false, 'optimizations' => 0]);
         $visitor = new TranslationDefaultDomainNodeVisitor();
 
         // visit trans_default_domain tag
@@ -42,13 +47,13 @@ class TranslationDefaultDomainNodeVisitorTest extends \PHPUnit_Framework_TestCas
         $visitor->enterNode($node, $env);
         $visitor->leaveNode($node, $env);
 
-        $this->assertEquals(array(array(self::$message, self::$domain)), $visitor->getMessages());
+        $this->assertEquals([[self::$message, self::$domain]], $visitor->getMessages());
     }
 
     /** @dataProvider getDefaultDomainAssignmentTestData */
-    public function testNewModuleWithoutDefaultDomainTag(\Twig_Node $node)
+    public function testNewModuleWithoutDefaultDomainTag(Node $node)
     {
-        $env = new \Twig_Environment(new \Twig_Loader_String(), array('cache' => false, 'autoescape' => false, 'optimizations' => 0));
+        $env = new Environment($this->createMock(LoaderInterface::class), ['cache' => false, 'autoescape' => false, 'optimizations' => 0]);
         $visitor = new TranslationDefaultDomainNodeVisitor();
 
         // visit trans_default_domain tag
@@ -68,15 +73,18 @@ class TranslationDefaultDomainNodeVisitorTest extends \PHPUnit_Framework_TestCas
         $visitor->enterNode($node, $env);
         $visitor->leaveNode($node, $env);
 
-        $this->assertEquals(array(array(self::$message, null)), $visitor->getMessages());
+        $this->assertEquals([[self::$message, null]], $visitor->getMessages());
     }
 
-    public function getDefaultDomainAssignmentTestData()
+    public static function getDefaultDomainAssignmentTestData()
     {
-        return array(
-            array(TwigNodeProvider::getTransFilter(self::$message)),
-            array(TwigNodeProvider::getTransChoiceFilter(self::$message)),
-            array(TwigNodeProvider::getTransTag(self::$message)),
-        );
+        return [
+            [TwigNodeProvider::getTransFilter(self::$message)],
+            [TwigNodeProvider::getTransTag(self::$message)],
+            // with named arguments
+            [TwigNodeProvider::getTransFilter(self::$message, null, [
+                'arguments' => new ArrayExpression([], 0),
+            ])],
+        ];
     }
 }

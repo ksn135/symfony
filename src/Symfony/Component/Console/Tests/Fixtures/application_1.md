@@ -1,199 +1,337 @@
-UNKNOWN
-=======
+Console Tool
+============
 
-* help
-* list
+* [`completion`](#completion)
+* [`help`](#help)
+* [`list`](#list)
 
-help
-----
+`completion`
+------------
 
-* Description: Displays help for a command
-* Usage: `help [--xml] [--format="..."] [--raw] [command_name]`
-* Aliases: <none>
+Dump the shell completion script
 
-The <info>help</info> command displays help for a given command:
+### Usage
 
-  <info>php app/console help list</info>
+* `completion [--debug] [--] [<shell>]`
 
-You can also output the help in other formats by using the <comment>--format</comment> option:
+Dump the shell completion script
 
-  <info>php app/console help --format=xml list</info>
+### Arguments
 
-To display the list of available commands, please use the <info>list</info> command.
+#### `shell`
 
-### Arguments:
+The shell type (e.g. "bash"), the value of the "$SHELL" env var will be used if this is not given
 
-**command_name:**
-
-* Name: command_name
 * Is required: no
 * Is array: no
-* Description: The command name
-* Default: `'help'`
+* Default: `NULL`
 
-### Options:
+### Options
 
-**xml:**
+#### `--debug`
 
-* Name: `--xml`
-* Shortcut: <none>
+Tail the completion debug log
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: To output help as XML
+* Is negatable: no
 * Default: `false`
 
-**format:**
+#### `--help|-h`
 
-* Name: `--format`
-* Shortcut: <none>
+Display help for the given command. When no command is given display help for the list command
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--quiet|-q`
+
+Do not output any message
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--verbose|-v|-vv|-vvv`
+
+Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--version|-V`
+
+Display this application version
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--ansi|--no-ansi`
+
+Force (or disable --no-ansi) ANSI output
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: yes
+* Default: `NULL`
+
+#### `--no-interaction|-n`
+
+Do not ask any interactive question
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+`help`
+------
+
+Display help for a command
+
+### Usage
+
+* `help [--format FORMAT] [--raw] [--] [<command_name>]`
+
+The help command displays help for a given command:
+
+  %%PHP_SELF%% help list
+
+You can also output the help in other formats by using the --format option:
+
+  %%PHP_SELF%% help --format=xml list
+
+To display the list of available commands, please use the list command.
+
+### Arguments
+
+#### `command_name`
+
+The command name
+
+* Is required: no
+* Is array: no
+* Default: `'help'`
+
+### Options
+
+#### `--format`
+
+The output format (txt, xml, json, or md)
+
 * Accept value: yes
 * Is value required: yes
 * Is multiple: no
-* Description: To output help in other formats
+* Is negatable: no
 * Default: `'txt'`
 
-**raw:**
+#### `--raw`
 
-* Name: `--raw`
-* Shortcut: <none>
+To output raw command help
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: To output raw command help
+* Is negatable: no
 * Default: `false`
 
-**help:**
+#### `--help|-h`
 
-* Name: `--help`
-* Shortcut: `-h`
+Display help for the given command. When no command is given display help for the list command
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: Display this help message.
+* Is negatable: no
 * Default: `false`
 
-**quiet:**
+#### `--quiet|-q`
 
-* Name: `--quiet`
-* Shortcut: `-q`
+Do not output any message
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: Do not output any message.
+* Is negatable: no
 * Default: `false`
 
-**verbose:**
+#### `--verbose|-v|-vv|-vvv`
 
-* Name: `--verbose`
-* Shortcut: `-v|-vv|-vvv`
+Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug.
+* Is negatable: no
 * Default: `false`
 
-**version:**
+#### `--version|-V`
 
-* Name: `--version`
-* Shortcut: `-V`
+Display this application version
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: Display this application version.
+* Is negatable: no
 * Default: `false`
 
-**ansi:**
+#### `--ansi|--no-ansi`
 
-* Name: `--ansi`
-* Shortcut: <none>
+Force (or disable --no-ansi) ANSI output
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: Force ANSI output.
-* Default: `false`
+* Is negatable: yes
+* Default: `NULL`
 
-**no-ansi:**
+#### `--no-interaction|-n`
 
-* Name: `--no-ansi`
-* Shortcut: <none>
+Do not ask any interactive question
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: Disable ANSI output.
+* Is negatable: no
 * Default: `false`
 
-**no-interaction:**
+`list`
+------
 
-* Name: `--no-interaction`
-* Shortcut: `-n`
-* Accept value: no
-* Is value required: no
-* Is multiple: no
-* Description: Do not ask any interactive question.
-* Default: `false`
+List commands
 
-list
-----
+### Usage
 
-* Description: Lists commands
-* Usage: `list [--xml] [--raw] [--format="..."] [namespace]`
-* Aliases: <none>
+* `list [--raw] [--format FORMAT] [--short] [--] [<namespace>]`
 
-The <info>list</info> command lists all commands:
+The list command lists all commands:
 
-  <info>php app/console list</info>
+  %%PHP_SELF%% list
 
 You can also display the commands for a specific namespace:
 
-  <info>php app/console list test</info>
+  %%PHP_SELF%% list test
 
-You can also output the information in other formats by using the <comment>--format</comment> option:
+You can also output the information in other formats by using the --format option:
 
-  <info>php app/console list --format=xml</info>
+  %%PHP_SELF%% list --format=xml
 
 It's also possible to get raw list of commands (useful for embedding command runner):
 
-  <info>php app/console list --raw</info>
+  %%PHP_SELF%% list --raw
 
-### Arguments:
+### Arguments
 
-**namespace:**
+#### `namespace`
 
-* Name: namespace
+The namespace name
+
 * Is required: no
 * Is array: no
-* Description: The namespace name
 * Default: `NULL`
 
-### Options:
+### Options
 
-**xml:**
+#### `--raw`
 
-* Name: `--xml`
-* Shortcut: <none>
+To output raw command list
+
 * Accept value: no
 * Is value required: no
 * Is multiple: no
-* Description: To output list as XML
+* Is negatable: no
 * Default: `false`
 
-**raw:**
+#### `--format`
 
-* Name: `--raw`
-* Shortcut: <none>
-* Accept value: no
-* Is value required: no
-* Is multiple: no
-* Description: To output raw command list
-* Default: `false`
+The output format (txt, xml, json, or md)
 
-**format:**
-
-* Name: `--format`
-* Shortcut: <none>
 * Accept value: yes
 * Is value required: yes
 * Is multiple: no
-* Description: To output list in other formats
+* Is negatable: no
 * Default: `'txt'`
+
+#### `--short`
+
+To skip describing commands' arguments
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--help|-h`
+
+Display help for the given command. When no command is given display help for the list command
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--quiet|-q`
+
+Do not output any message
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--verbose|-v|-vv|-vvv`
+
+Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--version|-V`
+
+Display this application version
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`
+
+#### `--ansi|--no-ansi`
+
+Force (or disable --no-ansi) ANSI output
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: yes
+* Default: `NULL`
+
+#### `--no-interaction|-n`
+
+Do not ask any interactive question
+
+* Accept value: no
+* Is value required: no
+* Is multiple: no
+* Is negatable: no
+* Default: `false`

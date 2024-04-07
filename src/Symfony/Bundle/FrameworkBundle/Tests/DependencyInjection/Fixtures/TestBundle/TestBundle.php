@@ -9,8 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Symfony\Bundle\FrameworkBundle\Tests;
+namespace Symfony\Bundle\FrameworkBundle\Tests\DependencyInjection\Fixtures\TestBundle;
 
-class TestBundle extends \Symfony\Component\HttpKernel\Bundle\Bundle
+use Symfony\Component\HttpKernel\Bundle\Bundle;
+
+class TestBundle extends Bundle
 {
 }

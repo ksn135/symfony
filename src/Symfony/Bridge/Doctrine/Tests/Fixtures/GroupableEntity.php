@@ -11,26 +11,22 @@
 
 namespace Symfony\Bridge\Doctrine\Tests\Fixtures;
 
-use Doctrine\ORM\Mapping\Id;
 use Doctrine\ORM\Mapping\Column;
 use Doctrine\ORM\Mapping\Entity;
+use Doctrine\ORM\Mapping\Id;
 
-/** @Entity */
+#[Entity]
 class GroupableEntity
 {
-    /** @Id @Column(type="integer") */
-    protected $id;
+    public function __construct(
+        #[Id, Column]
+        protected int $id,
 
-    /** @Column(type="string", nullable=true) */
-    public $name;
+        #[Column(nullable: true)]
+        public ?string $name,
 
-    /** @Column(type="string", nullable=true) */
-    public $groupName;
-
-    public function __construct($id, $name, $groupName)
-    {
-        $this->id = $id;
-        $this->name = $name;
-        $this->groupName = $groupName;
+        #[Column(nullable: true)]
+        public ?string $groupName,
+    ) {
     }
 }

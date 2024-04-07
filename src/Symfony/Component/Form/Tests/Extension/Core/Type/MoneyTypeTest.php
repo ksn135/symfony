@@ -11,25 +11,39 @@
 
 namespace Symfony\Component\Form\Tests\Extension\Core\Type;
 
+use Symfony\Component\Form\Exception\LogicException;
 use Symfony\Component\Intl\Util\IntlTestHelper;
 
-class MoneyTypeTest extends TypeTestCase
+class MoneyTypeTest extends BaseTypeTestCase
 {
-    protected function setUp()
+    public const TESTED_TYPE = 'Symfony\Component\Form\Extension\Core\Type\MoneyType';
+
+    private string $defaultLocale;
+
+    protected function setUp(): void
     {
         // we test against different locales, so we need the full
         // implementation
-        IntlTestHelper::requireFullIntl($this);
+        IntlTestHelper::requireFullIntl($this, false);
 
         parent::setUp();
+
+        $this->defaultLocale = \Locale::getDefault();
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+
+        \Locale::setDefault($this->defaultLocale);
     }
 
     public function testPassMoneyPatternToView()
     {
         \Locale::setDefault('de_DE');
 
-        $form = $this->factory->create('money');
-        $view = $form->createView();
+        $view = $this->factory->create(static::TESTED_TYPE)
+            ->createView();
 
         $this->assertSame('{{ widget }} €', $view->vars['money_pattern']);
     }
@@ -38,9 +52,10 @@ class MoneyTypeTest extends TypeTestCase
     {
         \Locale::setDefault('en_US');
 
-        $form = $this->factory->create('money', null, array('currency' => 'JPY'));
-        $view = $form->createView();
-        $this->assertTrue((bool) strstr($view->vars['money_pattern'], '¥'));
+        $view = $this->factory->create(static::TESTED_TYPE, null, ['currency' => 'JPY'])
+            ->createView();
+
+        $this->assertSame('¥ {{ widget }}', $view->vars['money_pattern']);
     }
 
     // https://github.com/symfony/symfony/issues/5458
@@ -48,12 +63,88 @@ class MoneyTypeTest extends TypeTestCase
     {
         \Locale::setDefault('de_DE');
 
-        $form1 = $this->factory->create('money', null, array('currency' => 'GBP'));
-        $form2 = $this->factory->create('money', null, array('currency' => 'EUR'));
-        $view1 = $form1->createView();
-        $view2 = $form2->createView();
+        $view1 = $this->factory->create(static::TESTED_TYPE, null, ['currency' => 'GBP'])->createView();
+        $view2 = $this->factory->create(static::TESTED_TYPE, null, ['currency' => 'EUR'])->createView();
 
         $this->assertSame('{{ widget }} £', $view1->vars['money_pattern']);
         $this->assertSame('{{ widget }} €', $view2->vars['money_pattern']);
+    }
+
+    public function testSubmitNull($expected = null, $norm = null, $view = null)
+    {
+        parent::testSubmitNull($expected, $norm, '');
+    }
+
+    public function testMoneyPatternWithoutCurrency()
+    {
+        $view = $this->factory->create(static::TESTED_TYPE, null, ['currency' => false])
+            ->createView();
+
+        $this->assertSame('{{ widget }}', $view->vars['money_pattern']);
+    }
+
+    public function testSubmitNullUsesDefaultEmptyData($emptyData = '10.00', $expectedData = 10.0)
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'empty_data' => $emptyData,
+        ]);
+        $form->submit(null);
+
+        $this->assertSame($emptyData, $form->getViewData());
+        $this->assertSame($expectedData, $form->getNormData());
+        $this->assertSame($expectedData, $form->getData());
+    }
+
+    public function testDefaultFormattingWithDefaultRounding()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, ['scale' => 0]);
+        $form->setData('12345.54321');
+
+        $this->assertSame('12346', $form->createView()->vars['value']);
+    }
+
+    public function testDefaultFormattingWithSpecifiedRounding()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, ['scale' => 0, 'rounding_mode' => \NumberFormatter::ROUND_DOWN]);
+        $form->setData('12345.54321');
+
+        $this->assertSame('12345', $form->createView()->vars['value']);
+    }
+
+    public function testHtml5EnablesSpecificFormatting()
+    {
+        // Since we test against "de_CH", we need the full implementation
+        IntlTestHelper::requireFullIntl($this, false);
+
+        \Locale::setDefault('de_CH');
+
+        $form = $this->factory->create(static::TESTED_TYPE, null, ['html5' => true, 'scale' => 2]);
+        $form->setData('12345.6');
+
+        $this->assertSame('12345.60', $form->createView()->vars['value']);
+        $this->assertSame('number', $form->createView()->vars['type']);
+    }
+
+    public function testDefaultModelType()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, ['divisor' => 100]);
+        $form->submit('12345.67');
+
+        $this->assertSame(1234567.0, $form->getData());
+    }
+
+    public function testIntegerModelType()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, ['divisor' => 100, 'model_type' => 'integer']);
+        $form->submit('12345.67');
+
+        $this->assertSame(1234567, $form->getData());
+    }
+
+    public function testIntegerModelTypeExpectsDivisorNotEqualToOne()
+    {
+        $this->expectException(LogicException::class);
+
+        $form = $this->factory->create(static::TESTED_TYPE, null, ['divisor' => 1, 'model_type' => 'integer']);
     }
 }

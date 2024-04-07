@@ -12,48 +12,50 @@
 namespace Symfony\Component\Form\Extension\Core\Type;
 
 use Symfony\Component\Form\AbstractType;
-use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Form\Extension\Core\EventListener\FixUrlProtocolListener;
-use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\FormInterface;
+use Symfony\Component\Form\FormView;
+use Symfony\Component\OptionsResolver\Options;
+use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class UrlType extends AbstractType
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         if (null !== $options['default_protocol']) {
             $builder->addEventSubscriber(new FixUrlProtocolListener($options['default_protocol']));
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setDefaultOptions(OptionsResolverInterface $resolver)
+    public function buildView(FormView $view, FormInterface $form, array $options): void
     {
-        $resolver->setDefaults(array(
-            'default_protocol' => 'http',
-        ));
-
-        $resolver->setAllowedTypes(array(
-            'default_protocol' => array('null', 'string'),
-        ));
+        if ($options['default_protocol']) {
+            $view->vars['attr']['inputmode'] = 'url';
+            $view->vars['type'] = 'text';
+        }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getParent()
+    public function configureOptions(OptionsResolver $resolver): void
     {
-        return 'text';
+        $resolver->setDefaults([
+            'default_protocol' => static function (Options $options) {
+                trigger_deprecation('symfony/form', '7.1', 'Not configuring the "default_protocol" option when using the UrlType is deprecated. It will default to "null" in 8.0.');
+
+                return 'http';
+            },
+            'invalid_message' => 'Please enter a valid URL.',
+        ]);
+
+        $resolver->setAllowedTypes('default_protocol', ['null', 'string']);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
+    public function getParent(): ?string
+    {
+        return TextType::class;
+    }
+
+    public function getBlockPrefix(): string
     {
         return 'url';
     }

@@ -14,21 +14,21 @@ namespace Symfony\Component\CssSelector\Tests\Node;
 use Symfony\Component\CssSelector\Node\ElementNode;
 use Symfony\Component\CssSelector\Node\SelectorNode;
 
-class SelectorNodeTest extends AbstractNodeTest
+class SelectorNodeTest extends AbstractNodeTestCase
 {
-    public function getToStringConversionTestData()
+    public static function getToStringConversionTestData()
     {
-        return array(
-            array(new SelectorNode(new ElementNode()), 'Selector[Element[*]]'),
-            array(new SelectorNode(new ElementNode(), 'pseudo'), 'Selector[Element[*]::pseudo]'),
-        );
+        return [
+            [new SelectorNode(new ElementNode()), 'Selector[Element[*]]'],
+            [new SelectorNode(new ElementNode(), 'pseudo'), 'Selector[Element[*]::pseudo]'],
+        ];
     }
 
-    public function getSpecificityValueTestData()
+    public static function getSpecificityValueTestData()
     {
-        return array(
-            array(new SelectorNode(new ElementNode()), 0),
-            array(new SelectorNode(new ElementNode(), 'pseudo'), 1),
-        );
+        return [
+            [new SelectorNode(new ElementNode()), 0],
+            [new SelectorNode(new ElementNode(), 'pseudo'), 1],
+        ];
     }
 }

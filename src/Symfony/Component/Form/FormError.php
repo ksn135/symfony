@@ -14,117 +14,78 @@ namespace Symfony\Component\Form;
 use Symfony\Component\Form\Exception\BadMethodCallException;
 
 /**
- * Wraps errors in forms
+ * Wraps errors in forms.
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class FormError implements \Serializable
+class FormError
 {
-    /**
-     * @var string
-     */
-    private $message;
+    protected string $messageTemplate;
 
     /**
-     * The template for the error message
-     * @var string
+     * The form that spawned this error.
      */
-    protected $messageTemplate;
+    private ?FormInterface $origin = null;
 
     /**
-     * The parameters that should be substituted in the message template
-     * @var array
-     */
-    protected $messageParameters;
-
-    /**
-     * The value for error message pluralization
-     * @var int|null
-     */
-    protected $messagePluralization;
-
-    /**
-     * The cause for this error
-     * @var mixed
-     */
-    private $cause;
-
-    /**
-     * The form that spawned this error
-     * @var FormInterface
-     */
-    private $origin;
-
-    /**
-     * Constructor
-     *
      * Any array key in $messageParameters will be used as a placeholder in
      * $messageTemplate.
      *
-     * @param string       $message              The translated error message
-     * @param string|null  $messageTemplate      The template for the error message
-     * @param array        $messageParameters    The parameters that should be
-     *                                           substituted in the message template
-     * @param int|null     $messagePluralization The value for error message pluralization
-     * @param mixed        $cause                The cause of the error
+     * @param string      $message              The translated error message
+     * @param string|null $messageTemplate      The template for the error message
+     * @param array       $messageParameters    The parameters that should be
+     *                                          substituted in the message template
+     * @param int|null    $messagePluralization The value for error message pluralization
+     * @param mixed       $cause                The cause of the error
      *
      * @see \Symfony\Component\Translation\Translator
      */
-    public function __construct($message, $messageTemplate = null, array $messageParameters = array(), $messagePluralization = null, $cause = null)
-    {
-        $this->message = $message;
+    public function __construct(
+        private string $message,
+        ?string $messageTemplate = null,
+        protected array $messageParameters = [],
+        protected ?int $messagePluralization = null,
+        private mixed $cause = null,
+    ) {
         $this->messageTemplate = $messageTemplate ?: $message;
-        $this->messageParameters = $messageParameters;
-        $this->messagePluralization = $messagePluralization;
-        $this->cause = $cause;
     }
 
     /**
-     * Returns the error message
-     *
-     * @return string
+     * Returns the error message.
      */
-    public function getMessage()
+    public function getMessage(): string
     {
         return $this->message;
     }
 
     /**
-     * Returns the error message template
-     *
-     * @return string
+     * Returns the error message template.
      */
-    public function getMessageTemplate()
+    public function getMessageTemplate(): string
     {
         return $this->messageTemplate;
     }
 
     /**
-     * Returns the parameters to be inserted in the message template
-     *
-     * @return array
+     * Returns the parameters to be inserted in the message template.
      */
-    public function getMessageParameters()
+    public function getMessageParameters(): array
     {
         return $this->messageParameters;
     }
 
     /**
      * Returns the value for error message pluralization.
-     *
-     * @return int|null
      */
-    public function getMessagePluralization()
+    public function getMessagePluralization(): ?int
     {
         return $this->messagePluralization;
     }
 
     /**
      * Returns the cause of this error.
-     *
-     * @return mixed The cause of this error
      */
-    public function getCause()
+    public function getCause(): mixed
     {
         return $this->cause;
     }
@@ -134,11 +95,9 @@ class FormError implements \Serializable
      *
      * This method must only be called once.
      *
-     * @param FormInterface $origin The form that caused this error
-     *
      * @throws BadMethodCallException If the method is called more than once
      */
-    public function setOrigin(FormInterface $origin)
+    public function setOrigin(FormInterface $origin): void
     {
         if (null !== $this->origin) {
             throw new BadMethodCallException('setOrigin() must only be called once.');
@@ -149,37 +108,9 @@ class FormError implements \Serializable
 
     /**
      * Returns the form that caused this error.
-     *
-     * @return FormInterface The form that caused this error
      */
-    public function getOrigin()
+    public function getOrigin(): ?FormInterface
     {
         return $this->origin;
-    }
-
-    /**
-     * Serializes this error.
-     *
-     * @return string The serialized error
-     */
-    public function serialize()
-    {
-        return serialize(array(
-            $this->message,
-            $this->messageTemplate,
-            $this->messageParameters,
-            $this->messagePluralization,
-            $this->cause,
-        ));
-    }
-
-    /**
-     * Unserializes a serialized error.
-     *
-     * @param string $serialized The serialized error
-     */
-    public function unserialize($serialized)
-    {
-        list($this->message, $this->messageTemplate, $this->messageParameters, $this->messagePluralization, $this->cause) = unserialize($serialized);
     }
 }

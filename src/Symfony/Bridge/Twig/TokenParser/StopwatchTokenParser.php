@@ -12,22 +12,24 @@
 namespace Symfony\Bridge\Twig\TokenParser;
 
 use Symfony\Bridge\Twig\Node\StopwatchNode;
+use Twig\Node\Expression\AssignNameExpression;
+use Twig\Node\Node;
+use Twig\Token;
+use Twig\TokenParser\AbstractTokenParser;
 
 /**
  * Token Parser for the stopwatch tag.
  *
  * @author Wouter J <wouter@wouterj.nl>
  */
-class StopwatchTokenParser extends \Twig_TokenParser
+final class StopwatchTokenParser extends AbstractTokenParser
 {
-    protected $stopwatchIsAvailable;
-
-    public function __construct($stopwatchIsAvailable)
-    {
-        $this->stopwatchIsAvailable = $stopwatchIsAvailable;
+    public function __construct(
+        private bool $stopwatchIsAvailable,
+    ) {
     }
 
-    public function parse(\Twig_Token $token)
+    public function parse(Token $token): Node
     {
         $lineno = $token->getLine();
         $stream = $this->parser->getStream();
@@ -35,25 +37,25 @@ class StopwatchTokenParser extends \Twig_TokenParser
         // {% stopwatch 'bar' %}
         $name = $this->parser->getExpressionParser()->parseExpression();
 
-        $stream->expect(\Twig_Token::BLOCK_END_TYPE);
+        $stream->expect(Token::BLOCK_END_TYPE);
 
         // {% endstopwatch %}
-        $body = $this->parser->subparse(array($this, 'decideStopwatchEnd'), true);
-        $stream->expect(\Twig_Token::BLOCK_END_TYPE);
+        $body = $this->parser->subparse($this->decideStopwatchEnd(...), true);
+        $stream->expect(Token::BLOCK_END_TYPE);
 
         if ($this->stopwatchIsAvailable) {
-            return new StopwatchNode($name, $body, new \Twig_Node_Expression_AssignName($this->parser->getVarName(), $token->getLine()), $lineno, $this->getTag());
+            return new StopwatchNode($name, $body, new AssignNameExpression($this->parser->getVarName(), $token->getLine()), $lineno, $this->getTag());
         }
 
         return $body;
     }
 
-    public function decideStopwatchEnd(\Twig_Token $token)
+    public function decideStopwatchEnd(Token $token): bool
     {
         return $token->test('endstopwatch');
     }
 
-    public function getTag()
+    public function getTag(): string
     {
         return 'stopwatch';
     }

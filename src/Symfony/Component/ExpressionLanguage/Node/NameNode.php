@@ -13,23 +13,33 @@ namespace Symfony\Component\ExpressionLanguage\Node;
 
 use Symfony\Component\ExpressionLanguage\Compiler;
 
+/**
+ * @author Fabien Potencier <fabien@symfony.com>
+ *
+ * @internal
+ */
 class NameNode extends Node
 {
-    public function __construct($name)
+    public function __construct(string $name)
     {
         parent::__construct(
-            array(),
-            array('name' => $name)
+            [],
+            ['name' => $name]
         );
     }
 
-    public function compile(Compiler $compiler)
+    public function compile(Compiler $compiler): void
     {
         $compiler->raw('$'.$this->attributes['name']);
     }
 
-    public function evaluate($functions, $values)
+    public function evaluate(array $functions, array $values): mixed
     {
         return $values[$this->attributes['name']];
+    }
+
+    public function toArray(): array
+    {
+        return [$this->attributes['name']];
     }
 }

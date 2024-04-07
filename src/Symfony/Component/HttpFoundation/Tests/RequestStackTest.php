@@ -11,10 +11,11 @@
 
 namespace Symfony\Component\HttpFoundation\Tests;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 
-class RequestStackTest extends \PHPUnit_Framework_TestCase
+class RequestStackTest extends TestCase
 {
     public function testGetCurrentRequest()
     {
@@ -32,18 +33,18 @@ class RequestStackTest extends \PHPUnit_Framework_TestCase
         $this->assertNull($requestStack->pop());
     }
 
-    public function testGetMasterRequest()
+    public function testGetMainRequest()
     {
         $requestStack = new RequestStack();
-        $this->assertNull($requestStack->getMasterRequest());
+        $this->assertNull($requestStack->getMainRequest());
 
-        $masterRequest = Request::create('/foo');
+        $mainRequest = Request::create('/foo');
         $subRequest = Request::create('/bar');
 
-        $requestStack->push($masterRequest);
+        $requestStack->push($mainRequest);
         $requestStack->push($subRequest);
 
-        $this->assertSame($masterRequest, $requestStack->getMasterRequest());
+        $this->assertSame($mainRequest, $requestStack->getMainRequest());
     }
 
     public function testGetParentRequest()
@@ -51,15 +52,15 @@ class RequestStackTest extends \PHPUnit_Framework_TestCase
         $requestStack = new RequestStack();
         $this->assertNull($requestStack->getParentRequest());
 
-        $masterRequest = Request::create('/foo');
+        $mainRequest = Request::create('/foo');
 
-        $requestStack->push($masterRequest);
+        $requestStack->push($mainRequest);
         $this->assertNull($requestStack->getParentRequest());
 
         $firstSubRequest = Request::create('/bar');
 
         $requestStack->push($firstSubRequest);
-        $this->assertSame($masterRequest, $requestStack->getParentRequest());
+        $this->assertSame($mainRequest, $requestStack->getParentRequest());
 
         $secondSubRequest = Request::create('/baz');
 

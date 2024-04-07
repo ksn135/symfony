@@ -13,10 +13,11 @@ namespace Symfony\Bridge\Doctrine;
 
 use Doctrine\Common\EventArgs;
 use Doctrine\Common\EventManager;
-use Symfony\Component\DependencyInjection\ContainerInterface;
+use Doctrine\Common\EventSubscriber;
+use Psr\Container\ContainerInterface;
 
 /**
- * Allows lazy loading of listener services.
+ * Allows lazy loading of listener and subscriber services.
  *
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
  */
@@ -24,118 +25,200 @@ class ContainerAwareEventManager extends EventManager
 {
     /**
      * Map of registered listeners.
-     * <event> => <listeners>
      *
-     * @var array
+     * <event> => <listeners>
      */
-    private $listeners = array();
-    private $initialized = array();
-    private $container;
-
-    public function __construct(ContainerInterface $container)
-    {
-        $this->container = $container;
-    }
+    private array $listeners = [];
+    private array $initialized = [];
+    private bool $initializedSubscribers = false;
+    private array $initializedHashMapping = [];
+    private array $methods = [];
+    private ContainerInterface $container;
 
     /**
-     * Dispatches an event to all registered listeners.
-     *
-     * @param string $eventName The name of the event to dispatch. The name of the event is
-     *                          the name of the method that is invoked on listeners.
-     * @param EventArgs $eventArgs The event arguments to pass to the event handlers/listeners.
-     *                             If not supplied, the single empty EventArgs instance is used.
-     * @return bool
+     * @param list<array{string[], string|object}> $listeners List of [events, listener] tuples
      */
-    public function dispatchEvent($eventName, EventArgs $eventArgs = null)
+    public function __construct(ContainerInterface $container, array $listeners = [])
     {
-        if (isset($this->listeners[$eventName])) {
-            $eventArgs = null === $eventArgs ? EventArgs::getEmptyInstance() : $eventArgs;
+        $this->container = $container;
+        $this->listeners = $listeners;
+    }
 
-            $initialized = isset($this->initialized[$eventName]);
+    public function dispatchEvent(string $eventName, ?EventArgs $eventArgs = null): void
+    {
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
+        }
+        if (!isset($this->listeners[$eventName])) {
+            return;
+        }
 
-            foreach ($this->listeners[$eventName] as $hash => $listener) {
-                if (!$initialized && is_string($listener)) {
-                    $this->listeners[$eventName][$hash] = $listener = $this->container->get($listener);
-                }
+        $eventArgs ??= EventArgs::getEmptyInstance();
 
-                $listener->$eventName($eventArgs);
-            }
-            $this->initialized[$eventName] = true;
+        if (!isset($this->initialized[$eventName])) {
+            $this->initializeListeners($eventName);
+        }
+
+        foreach ($this->listeners[$eventName] as $hash => $listener) {
+            $listener->{$this->methods[$eventName][$hash]}($eventArgs);
         }
     }
 
-    /**
-     * Gets the listeners of a specific event or all listeners.
-     *
-     * @param string $event The name of the event.
-     *
-     * @return array The event listeners for the specified event, or all event listeners.
-     */
-    public function getListeners($event = null)
+    public function getListeners(string $event): array
     {
-        return $event ? $this->listeners[$event] : $this->listeners;
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
+        }
+        if (!isset($this->initialized[$event])) {
+            $this->initializeListeners($event);
+        }
+
+        return $this->listeners[$event];
     }
 
-    /**
-     * Checks whether an event has any registered listeners.
-     *
-     * @param string $event
-     *
-     * @return bool    TRUE if the specified event has any listeners, FALSE otherwise.
-     */
-    public function hasListeners($event)
+    public function getAllListeners(): array
     {
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
+        }
+
+        foreach ($this->listeners as $event => $listeners) {
+            if (!isset($this->initialized[$event])) {
+                $this->initializeListeners($event);
+            }
+        }
+
+        return $this->listeners;
+    }
+
+    public function hasListeners(string $event): bool
+    {
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
+        }
+
         return isset($this->listeners[$event]) && $this->listeners[$event];
     }
 
-    /**
-     * Adds an event listener that listens on the specified events.
-     *
-     * @param string|array  $events   The event(s) to listen on.
-     * @param object|string $listener The listener object.
-     *
-     * @throws \RuntimeException
-     */
-    public function addEventListener($events, $listener)
+    public function addEventListener(string|array $events, object|string $listener): void
     {
-        if (is_string($listener)) {
-            if ($this->initialized) {
-                throw new \RuntimeException('Adding lazy-loading listeners after construction is not supported.');
-            }
-
-            $hash = '_service_'.$listener;
-        } else {
-            // Picks the hash code related to that listener
-            $hash = spl_object_hash($listener);
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
         }
+
+        $hash = $this->getHash($listener);
 
         foreach ((array) $events as $event) {
             // Overrides listener if a previous one was associated already
             // Prevents duplicate listeners on same event (same instance only)
             $this->listeners[$event][$hash] = $listener;
+
+            if (\is_string($listener)) {
+                unset($this->initialized[$event]);
+                unset($this->initializedHashMapping[$event][$hash]);
+            } else {
+                $this->methods[$event][$hash] = $this->getMethod($listener, $event);
+            }
         }
     }
 
-    /**
-     * Removes an event listener from the specified events.
-     *
-     * @param string|array  $events
-     * @param object|string $listener
-     */
-    public function removeEventListener($events, $listener)
+    public function removeEventListener(string|array $events, object|string $listener): void
     {
-        if (is_string($listener)) {
-            $hash = '_service_'.$listener;
-        } else {
-            // Picks the hash code related to that listener
-            $hash = spl_object_hash($listener);
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
         }
 
+        $hash = $this->getHash($listener);
+
         foreach ((array) $events as $event) {
-            // Check if actually have this listener associated
+            if (isset($this->initializedHashMapping[$event][$hash])) {
+                $hash = $this->initializedHashMapping[$event][$hash];
+                unset($this->initializedHashMapping[$event][$hash]);
+            }
+
+            // Check if we actually have this listener associated
             if (isset($this->listeners[$event][$hash])) {
                 unset($this->listeners[$event][$hash]);
             }
+
+            if (isset($this->methods[$event][$hash])) {
+                unset($this->methods[$event][$hash]);
+            }
         }
+    }
+
+    public function addEventSubscriber(EventSubscriber $subscriber): void
+    {
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
+        }
+
+        parent::addEventSubscriber($subscriber);
+    }
+
+    public function removeEventSubscriber(EventSubscriber $subscriber): void
+    {
+        if (!$this->initializedSubscribers) {
+            $this->initializeSubscribers();
+        }
+
+        parent::removeEventSubscriber($subscriber);
+    }
+
+    private function initializeListeners(string $eventName): void
+    {
+        $this->initialized[$eventName] = true;
+
+        // We'll refill the whole array in order to keep the same order
+        $listeners = [];
+        foreach ($this->listeners[$eventName] as $hash => $listener) {
+            if (\is_string($listener)) {
+                $listener = $this->container->get($listener);
+                $newHash = $this->getHash($listener);
+
+                $this->initializedHashMapping[$eventName][$hash] = $newHash;
+
+                $listeners[$newHash] = $listener;
+
+                $this->methods[$eventName][$newHash] = $this->getMethod($listener, $eventName);
+            } else {
+                $listeners[$hash] = $listener;
+            }
+        }
+
+        $this->listeners[$eventName] = $listeners;
+    }
+
+    private function initializeSubscribers(): void
+    {
+        $this->initializedSubscribers = true;
+        $listeners = $this->listeners;
+        $this->listeners = [];
+        foreach ($listeners as $listener) {
+            if (\is_array($listener)) {
+                $this->addEventListener(...$listener);
+                continue;
+            }
+
+            throw new \InvalidArgumentException(sprintf('Using Doctrine subscriber "%s" is not allowed. Register it as a listener instead, using e.g. the #[AsDoctrineListener] or #[AsDocumentListener] attribute.', \is_object($listener) ? get_debug_type($listener) : $listener));
+        }
+    }
+
+    private function getHash(string|object $listener): string
+    {
+        if (\is_string($listener)) {
+            return '_service_'.$listener;
+        }
+
+        return spl_object_hash($listener);
+    }
+
+    private function getMethod(object $listener, string $event): string
+    {
+        if (!method_exists($listener, $event) && method_exists($listener, '__invoke')) {
+            return '__invoke';
+        }
+
+        return $event;
     }
 }

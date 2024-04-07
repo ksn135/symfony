@@ -11,147 +11,134 @@
 
 namespace Symfony\Bridge\Doctrine\DependencyInjection\CompilerPass;
 
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Bridge\Doctrine\ContainerAwareEventManager;
+use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
+use Symfony\Component\DependencyInjection\Compiler\ServiceLocatorTagPass;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Definition;
+use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
+use Symfony\Component\DependencyInjection\Exception\RuntimeException;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
- * Registers event listeners and subscribers to the available doctrine connections.
+ * Registers event listeners to the available doctrine connections.
  *
  * @author Jeremy Mikola <jmikola@gmail.com>
  * @author Alexander <iam.asm89@gmail.com>
+ * @author David Maicher <mail@dmaicher.de>
  */
 class RegisterEventListenersAndSubscribersPass implements CompilerPassInterface
 {
-    private $connections;
-    private $container;
-    private $eventManagers;
-    private $managerTemplate;
-    private $tagPrefix;
+    private array $connections;
 
     /**
-     * Constructor.
-     *
-     * @param string $connections     Parameter ID for connections
+     * @var array<string, Definition>
+     */
+    private array $eventManagers = [];
+
+    /**
      * @param string $managerTemplate sprintf() template for generating the event
      *                                manager's service ID for a connection name
-     * @param string $tagPrefix Tag prefix for listeners and subscribers
+     * @param string $tagPrefix       Tag prefix for listeners
      */
-    public function __construct($connections, $managerTemplate, $tagPrefix)
-    {
-        $this->connections = $connections;
-        $this->managerTemplate = $managerTemplate;
-        $this->tagPrefix = $tagPrefix;
+    public function __construct(
+        private readonly string $connectionsParameter,
+        private readonly string $managerTemplate,
+        private readonly string $tagPrefix,
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function process(ContainerBuilder $container)
+    public function process(ContainerBuilder $container): void
     {
-        if (!$container->hasParameter($this->connections)) {
+        if (!$container->hasParameter($this->connectionsParameter)) {
             return;
         }
 
-        $taggedSubscribers = $container->findTaggedServiceIds($this->tagPrefix.'.event_subscriber');
-        $taggedListeners = $container->findTaggedServiceIds($this->tagPrefix.'.event_listener');
+        $this->connections = $container->getParameter($this->connectionsParameter);
+        $listenerRefs = $this->addTaggedServices($container);
 
-        if (empty($taggedSubscribers) && empty($taggedListeners)) {
-            return;
-        }
-
-        $this->container = $container;
-        $this->connections = $container->getParameter($this->connections);
-        $sortFunc = function ($a, $b) {
-            $a = isset($a['priority']) ? $a['priority'] : 0;
-            $b = isset($b['priority']) ? $b['priority'] : 0;
-
-            return $a > $b ? -1 : 1;
-        };
-
-        if (!empty($taggedSubscribers)) {
-            $subscribersPerCon = $this->groupByConnection($taggedSubscribers);
-            foreach ($subscribersPerCon as $con => $subscribers) {
-                $em = $this->getEventManager($con);
-
-                uasort($subscribers, $sortFunc);
-                foreach ($subscribers as $id => $instance) {
-                    if ($container->getDefinition($id)->isAbstract()) {
-                        throw new \InvalidArgumentException(sprintf('The abstract service "%s" cannot be tagged as a doctrine event subscriber.', $id));
-                    }
-
-                    $em->addMethodCall('addEventSubscriber', array(new Reference($id)));
-                }
-            }
-        }
-
-        if (!empty($taggedListeners)) {
-            $listenersPerCon = $this->groupByConnection($taggedListeners, true);
-            foreach ($listenersPerCon as $con => $listeners) {
-                $em = $this->getEventManager($con);
-
-                uasort($listeners, $sortFunc);
-                foreach ($listeners as $id => $instance) {
-                    if ($container->getDefinition($id)->isAbstract()) {
-                        throw new \InvalidArgumentException(sprintf('The abstract service "%s" cannot be tagged as a doctrine event listener.', $id));
-                    }
-
-                    $em->addMethodCall('addEventListener', array(
-                        array_unique($instance['event']),
-                        isset($instance['lazy']) && $instance['lazy'] ? $id : new Reference($id),
-                    ));
-                }
-            }
+        // replace service container argument of event managers with smaller service locator
+        // so services can even remain private
+        foreach ($listenerRefs as $connection => $refs) {
+            $this->getEventManagerDef($container, $connection)
+                ->replaceArgument(0, ServiceLocatorTagPass::register($container, $refs));
         }
     }
 
-    private function groupByConnection(array $services, $isListener = false)
+    private function addTaggedServices(ContainerBuilder $container): array
     {
-        $grouped = array();
-        foreach ($allCons = array_keys($this->connections) as $con) {
-            $grouped[$con] = array();
-        }
-
-        foreach ($services as $id => $instances) {
-            foreach ($instances as $instance) {
-                if ($isListener) {
-                    if (!isset($instance['event'])) {
-                        throw new \InvalidArgumentException(sprintf('Doctrine event listener "%s" must specify the "event" attribute.', $id));
-                    }
-                    $instance['event'] = array($instance['event']);
-
-                    if (isset($instance['lazy']) && $instance['lazy']) {
-                        $this->container->getDefinition($id)->setPublic(true);
-                    }
+        $listenerRefs = [];
+        $managerDefs = [];
+        foreach ($this->findAndSortTags($container) as [$id, $tag]) {
+            $connections = isset($tag['connection'])
+                ? [$container->getParameterBag()->resolveValue($tag['connection'])]
+                : array_keys($this->connections);
+            if (!isset($tag['event'])) {
+                throw new InvalidArgumentException(sprintf('Doctrine event listener "%s" must specify the "event" attribute.', $id));
+            }
+            foreach ($connections as $con) {
+                if (!isset($this->connections[$con])) {
+                    throw new RuntimeException(sprintf('The Doctrine connection "%s" referenced in service "%s" does not exist. Available connections names: "%s".', $con, $id, implode('", "', array_keys($this->connections))));
                 }
 
-                $cons = isset($instance['connection']) ? array($instance['connection']) : $allCons;
-                foreach ($cons as $con) {
-                    if (!isset($grouped[$con])) {
-                        throw new \RuntimeException(sprintf('The Doctrine connection "%s" referenced in service "%s" does not exist. Available connections names: %s', $con, $id, implode(', ', array_keys($this->connections))));
+                if (!isset($managerDefs[$con])) {
+                    $managerDef = $parentDef = $this->getEventManagerDef($container, $con);
+                    while (!$parentDef->getClass() && $parentDef instanceof ChildDefinition) {
+                        $parentDef = $container->findDefinition($parentDef->getParent());
                     }
+                    $managerClass = $container->getParameterBag()->resolveValue($parentDef->getClass());
+                    $managerDefs[$con] = [$managerDef, $managerClass];
+                } else {
+                    [$managerDef, $managerClass] = $managerDefs[$con];
+                }
 
-                    if ($isListener && isset($grouped[$con][$id])) {
-                        $grouped[$con][$id]['event'] = array_merge($grouped[$con][$id]['event'], $instance['event']);
-                    } else {
-                        $grouped[$con][$id] = $instance;
-                    }
+                if (ContainerAwareEventManager::class === $managerClass) {
+                    $refs = $managerDef->getArguments()[1] ?? [];
+                    $listenerRefs[$con][$id] = new Reference($id);
+                    $refs[] = [[$tag['event']], $id];
+                    $managerDef->setArgument(1, $refs);
+                } else {
+                    $managerDef->addMethodCall('addEventListener', [[$tag['event']], new Reference($id)]);
                 }
             }
         }
 
-        return $grouped;
+        return $listenerRefs;
     }
 
-    private function getEventManager($name)
+    private function getEventManagerDef(ContainerBuilder $container, string $name): Definition
     {
-        if (null === $this->eventManagers) {
-            $this->eventManagers = array();
-            foreach ($this->connections as $n => $id) {
-                $this->eventManagers[$n] = $this->container->getDefinition(sprintf($this->managerTemplate, $n));
-            }
+        if (!isset($this->eventManagers[$name])) {
+            $this->eventManagers[$name] = $container->getDefinition(sprintf($this->managerTemplate, $name));
         }
 
         return $this->eventManagers[$name];
+    }
+
+    /**
+     * Finds and orders all service tags with the given name by their priority.
+     *
+     * The order of additions must be respected for services having the same priority,
+     * and knowing that the \SplPriorityQueue class does not respect the FIFO method,
+     * we should not use this class.
+     *
+     * @see https://bugs.php.net/53710
+     * @see https://bugs.php.net/60926
+     */
+    private function findAndSortTags(ContainerBuilder $container): array
+    {
+        $sortedTags = [];
+
+        foreach ($container->findTaggedServiceIds($this->tagPrefix.'.event_listener', true) as $serviceId => $tags) {
+            foreach ($tags as $attributes) {
+                $priority = $attributes['priority'] ?? 0;
+                $sortedTags[$priority][] = [$serviceId, $attributes];
+            }
+        }
+
+        krsort($sortedTags);
+
+        return array_merge(...$sortedTags);
     }
 }

@@ -11,84 +11,78 @@
 
 namespace Symfony\Bundle\FrameworkBundle\HttpCache;
 
-use Symfony\Component\HttpKernel\HttpKernelInterface;
-use Symfony\Component\HttpKernel\HttpCache\HttpCache as BaseHttpCache;
-use Symfony\Component\HttpKernel\HttpCache\Esi;
-use Symfony\Component\HttpKernel\HttpCache\Store;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\HttpCache\Esi;
+use Symfony\Component\HttpKernel\HttpCache\HttpCache as BaseHttpCache;
+use Symfony\Component\HttpKernel\HttpCache\Store;
+use Symfony\Component\HttpKernel\HttpCache\StoreInterface;
+use Symfony\Component\HttpKernel\HttpCache\SurrogateInterface;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 /**
  * Manages HTTP cache objects in a Container.
  *
  * @author Fabien Potencier <fabien@symfony.com>
  */
-abstract class HttpCache extends BaseHttpCache
+class HttpCache extends BaseHttpCache
 {
-    protected $cacheDir;
-    protected $kernel;
+    protected ?string $cacheDir = null;
+
+    private ?StoreInterface $store = null;
+    private array $options;
 
     /**
-     * Constructor.
-     *
-     * @param HttpKernelInterface $kernel   An HttpKernelInterface instance
-     * @param string              $cacheDir The cache directory (default used if null)
+     * @param $cache The cache directory (default used if null) or the storage instance
      */
-    public function __construct(HttpKernelInterface $kernel, $cacheDir = null)
-    {
-        $this->kernel = $kernel;
-        $this->cacheDir = $cacheDir;
+    public function __construct(
+        protected KernelInterface $kernel,
+        string|StoreInterface|null $cache = null,
+        private ?SurrogateInterface $surrogate = null,
+        ?array $options = null,
+    ) {
+        $this->options = $options ?? [];
 
-        parent::__construct($kernel, $this->createStore(), $this->createSurrogate(), array_merge(array('debug' => $kernel->isDebug()), $this->getOptions()));
+        if ($cache instanceof StoreInterface) {
+            $this->store = $cache;
+        } else {
+            $this->cacheDir = $cache;
+        }
+
+        if (null === $options && $kernel->isDebug()) {
+            $this->options = ['debug' => true];
+        }
+
+        if ($this->options['debug'] ?? false) {
+            $this->options += ['stale_if_error' => 0];
+        }
+
+        parent::__construct($kernel, $this->createStore(), $this->createSurrogate(), array_merge($this->options, $this->getOptions()));
     }
 
-    /**
-     * Forwards the Request to the backend and returns the Response.
-     *
-     * @param Request  $request A Request instance
-     * @param bool     $raw     Whether to catch exceptions or not
-     * @param Response $entry   A Response instance (the stale entry if present, null otherwise)
-     *
-     * @return Response A Response instance
-     */
-    protected function forward(Request $request, $raw = false, Response $entry = null)
+    protected function forward(Request $request, bool $catch = false, ?Response $entry = null): Response
     {
         $this->getKernel()->boot();
         $this->getKernel()->getContainer()->set('cache', $this);
-        $this->getKernel()->getContainer()->set($this->getSurrogate()->getName(), $this->getSurrogate());
 
-        return parent::forward($request, $raw, $entry);
+        return parent::forward($request, $catch, $entry);
     }
 
     /**
      * Returns an array of options to customize the Cache configuration.
-     *
-     * @return array An array of options
      */
-    protected function getOptions()
+    protected function getOptions(): array
     {
-        return array();
+        return [];
     }
 
-    protected function createSurrogate()
+    protected function createSurrogate(): SurrogateInterface
     {
-        return $this->createEsi();
+        return $this->surrogate ?? new Esi();
     }
 
-    /**
-     * Creates new ESI instance
-     *
-     * @return Esi
-     *
-     * @deprecated Deprecated since version 2.6, to be removed in 3.0. Use createSurrogate() instead
-     */
-    protected function createEsi()
+    protected function createStore(): StoreInterface
     {
-        return new Esi();
-    }
-
-    protected function createStore()
-    {
-        return new Store($this->cacheDir ?: $this->kernel->getCacheDir().'/http_cache');
+        return $this->store ?? new Store($this->cacheDir ?: $this->kernel->getCacheDir().'/http_cache');
     }
 }

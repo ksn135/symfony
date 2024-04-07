@@ -11,13 +11,17 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\Functional\Bundle\TestBundle\Controller;
 
+use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\DependencyInjection\ContainerAware;
 
-class SessionController extends ContainerAware
+class SessionController
 {
+    public function __construct(protected ContainerInterface $container)
+    {
+    }
+
     public function welcomeAction(Request $request, $name = null)
     {
         $session = $request->getSession();
@@ -25,26 +29,34 @@ class SessionController extends ContainerAware
         // new session case
         if (!$session->has('name')) {
             if (!$name) {
-                return new Response('You are new here and gave no name.');
+                return new Response('<html><body>You are new here and gave no name.</body></html>');
             }
 
             // remember name
             $session->set('name', $name);
 
-            return new Response(sprintf('Hello %s, nice to meet you.', $name));
+            return new Response(sprintf('<html><body>Hello %s, nice to meet you.</body></html>', $name));
         }
 
         // existing session
         $name = $session->get('name');
 
-        return new Response(sprintf('Welcome back %s, nice to meet you.', $name));
+        return new Response(sprintf('<html><body>Welcome back %s, nice to meet you.</body></html>', $name));
+    }
+
+    public function cacheableAction()
+    {
+        $response = new Response('all good');
+        $response->setSharedMaxAge(100);
+
+        return $response;
     }
 
     public function logoutAction(Request $request)
     {
-        $request->getSession('session')->invalidate();
+        $request->getSession()->invalidate();
 
-        return new Response('Session cleared.');
+        return new Response('<html><body>Session cleared.</body></html>');
     }
 
     public function setFlashAction(Request $request, $message)
@@ -60,11 +72,11 @@ class SessionController extends ContainerAware
         $session = $request->getSession();
 
         if ($session->getFlashBag()->has('notice')) {
-            list($output) = $session->getFlashBag()->get('notice');
+            [$output] = $session->getFlashBag()->get('notice');
         } else {
             $output = 'No flash was set.';
         }
 
-        return new Response($output);
+        return new Response('<html><body>'.$output.'</body></html>');
     }
 }

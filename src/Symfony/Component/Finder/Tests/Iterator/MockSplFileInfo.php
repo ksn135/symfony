@@ -13,29 +13,29 @@ namespace Symfony\Component\Finder\Tests\Iterator;
 
 class MockSplFileInfo extends \SplFileInfo
 {
-    const   TYPE_DIRECTORY = 1;
-    const   TYPE_FILE = 2;
-    const   TYPE_UNKNOWN = 3;
+    public const TYPE_DIRECTORY = 1;
+    public const TYPE_FILE = 2;
+    public const TYPE_UNKNOWN = 3;
 
-    private $contents = null;
-    private $mode = null;
-    private $type = null;
-    private $relativePath = null;
-    private $relativePathname = null;
+    private ?string $contents = null;
+    private ?string $mode = null;
+    private ?int $type = null;
+    private ?string $relativePath = null;
+    private ?string $relativePathname = null;
 
     public function __construct($param)
     {
-        if (is_string($param)) {
+        if (\is_string($param)) {
             parent::__construct($param);
-        } elseif (is_array($param)) {
-            $defaults = array(
-              'name' => 'file.txt',
-              'contents' => null,
-              'mode' => null,
-              'type' => null,
-              'relativePath' => null,
-              'relativePathname' => null,
-            );
+        } elseif (\is_array($param)) {
+            $defaults = [
+                'name' => 'file.txt',
+                'contents' => null,
+                'mode' => null,
+                'type' => null,
+                'relativePath' => null,
+                'relativePathname' => null,
+            ];
             $defaults = array_merge($defaults, $param);
             parent::__construct($defaults['name']);
             $this->setContents($defaults['contents']);
@@ -48,31 +48,27 @@ class MockSplFileInfo extends \SplFileInfo
         }
     }
 
-    public function isFile()
+    public function isFile(): bool
     {
         if (null === $this->type) {
-            return preg_match('/file/', $this->getFilename());
-        };
+            return str_contains($this->getFilename(), 'file');
+        }
 
         return self::TYPE_FILE === $this->type;
     }
 
-    public function isDir()
+    public function isDir(): bool
     {
         if (null === $this->type) {
-            return preg_match('/directory/', $this->getFilename());
+            return str_contains($this->getFilename(), 'directory');
         }
 
         return self::TYPE_DIRECTORY === $this->type;
     }
 
-    public function isReadable()
+    public function isReadable(): bool
     {
-        if (null === $this->mode) {
-            return preg_match('/r\+/', $this->getFilename());
-        }
-
-        return preg_match('/r\+/', $this->mode);
+        return (bool) preg_match('/r\+/', $this->mode ?? $this->getFilename());
     }
 
     public function getContents()
@@ -92,21 +88,14 @@ class MockSplFileInfo extends \SplFileInfo
 
     public function setType($type)
     {
-        if (is_string($type)) {
-            switch ($type) {
-                case 'directory':
-                    $this->type = self::TYPE_DIRECTORY;
-                case 'd':
-                    $this->type = self::TYPE_DIRECTORY;
-                    break;
-                case 'file':
-                    $this->type = self::TYPE_FILE;
-                case 'f':
-                    $this->type = self::TYPE_FILE;
-                    break;
-                default:
-                    $this->type = self::TYPE_UNKNOWN;
-            }
+        if (\is_string($type)) {
+            $this->type = match ($type) {
+                'directory',
+                'd' => self::TYPE_DIRECTORY,
+                'file',
+                'f' => self::TYPE_FILE,
+                default => self::TYPE_UNKNOWN,
+            };
         } else {
             $this->type = $type;
         }

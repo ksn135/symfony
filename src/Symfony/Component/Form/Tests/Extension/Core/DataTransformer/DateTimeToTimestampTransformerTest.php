@@ -11,9 +11,11 @@
 
 namespace Symfony\Component\Form\Tests\Extension\Core\DataTransformer;
 
+use Symfony\Component\Form\Exception\TransformationFailedException;
+use Symfony\Component\Form\Extension\Core\DataTransformer\BaseDateTimeTransformer;
 use Symfony\Component\Form\Extension\Core\DataTransformer\DateTimeToTimestampTransformer;
 
-class DateTimeToTimestampTransformerTest extends DateTimeTestCase
+class DateTimeToTimestampTransformerTest extends BaseDateTimeTransformerTestCase
 {
     public function testTransform()
     {
@@ -56,11 +58,22 @@ class DateTimeToTimestampTransformerTest extends DateTimeTestCase
         $this->assertEquals($output, $transformer->transform($input));
     }
 
+    public function testTransformDateTimeImmutable()
+    {
+        $transformer = new DateTimeToTimestampTransformer('Asia/Hong_Kong', 'America/New_York');
+
+        $input = new \DateTimeImmutable('2010-02-03 04:05:06 America/New_York');
+        $output = $input->format('U');
+        $input = $input->setTimezone(new \DateTimeZone('Asia/Hong_Kong'));
+
+        $this->assertEquals($output, $transformer->transform($input));
+    }
+
     public function testTransformExpectsDateTime()
     {
         $transformer = new DateTimeToTimestampTransformer();
 
-        $this->setExpectedException('Symfony\Component\Form\Exception\TransformationFailedException');
+        $this->expectException(TransformationFailedException::class);
 
         $transformer->transform('1234');
     }
@@ -72,7 +85,7 @@ class DateTimeToTimestampTransformerTest extends DateTimeTestCase
         $output = new \DateTime('2010-02-03 04:05:06 UTC');
         $input = $output->format('U');
 
-        $this->assertDateTimeEquals($output, $reverseTransformer->reverseTransform($input));
+        $this->assertEquals($output, $reverseTransformer->reverseTransform($input));
     }
 
     public function testReverseTransformEmpty()
@@ -90,15 +103,20 @@ class DateTimeToTimestampTransformerTest extends DateTimeTestCase
         $input = $output->format('U');
         $output->setTimezone(new \DateTimeZone('Asia/Hong_Kong'));
 
-        $this->assertDateTimeEquals($output, $reverseTransformer->reverseTransform($input));
+        $this->assertEquals($output, $reverseTransformer->reverseTransform($input));
     }
 
     public function testReverseTransformExpectsValidTimestamp()
     {
         $reverseTransformer = new DateTimeToTimestampTransformer();
 
-        $this->setExpectedException('Symfony\Component\Form\Exception\TransformationFailedException');
+        $this->expectException(TransformationFailedException::class);
 
         $reverseTransformer->reverseTransform('2010-2010-2010');
+    }
+
+    protected function createDateTimeTransformer(?string $inputTimezone = null, ?string $outputTimezone = null): BaseDateTimeTransformer
+    {
+        return new DateTimeToTimestampTransformer($inputTimezone, $outputTimezone);
     }
 }

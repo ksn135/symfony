@@ -16,7 +16,7 @@ use Symfony\Component\CssSelector\Parser\Reader;
 use Symfony\Component\CssSelector\Parser\Token;
 use Symfony\Component\CssSelector\Parser\TokenStream;
 
-class CommentHandlerTest extends AbstractHandlerTest
+class CommentHandlerTest extends AbstractHandlerTestCase
 {
     /** @dataProvider getHandleValueTestData */
     public function testHandleValue($value, Token $unusedArgument, $remainingContent)
@@ -30,22 +30,22 @@ class CommentHandlerTest extends AbstractHandlerTest
         $this->assertRemainingContent($reader, $remainingContent);
     }
 
-    public function getHandleValueTestData()
+    public static function getHandleValueTestData()
     {
-        return array(
+        return [
             // 2nd argument only exists for inherited method compatibility
-            array('/* comment */', new Token(null, null, null), ''),
-            array('/* comment */foo', new Token(null, null, null), 'foo'),
-        );
+            ['/* comment */', new Token(null, null, null), ''],
+            ['/* comment */foo', new Token(null, null, null), 'foo'],
+        ];
     }
 
-    public function getDontHandleValueTestData()
+    public static function getDontHandleValueTestData()
     {
-        return array(
-            array('>'),
-            array('+'),
-            array(' '),
-        );
+        return [
+            ['>'],
+            ['+'],
+            [' '],
+        ];
     }
 
     protected function generateHandler()

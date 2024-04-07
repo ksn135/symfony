@@ -6,29 +6,29 @@ if (is_file($file)) {
 }
 
 $phar = new Phar($file, 0, 'ProjectWithXsdExtensionInPhar.phar');
-$phar->addFromString('ProjectWithXsdExtensionInPhar.php',<<<EOT
+$phar->addFromString('ProjectWithXsdExtensionInPhar.php', <<<'EOT'
 <?php
 
 class ProjectWithXsdExtensionInPhar extends ProjectExtension
 {
-    public function getXsdValidationBasePath()
+    public function getXsdValidationBasePath(): string
     {
         return __DIR__.'/schema';
     }
 
-    public function getNamespace()
+    public function getNamespace(): string
     {
         return 'http://www.example.com/schema/projectwithxsdinphar';
     }
 
-    public function getAlias()
+    public function getAlias(): string
     {
         return 'projectwithxsdinphar';
     }
 }
 EOT
 );
-$phar->addFromString('schema/project-1.0.xsd', <<<EOT
+$phar->addFromString('schema/project-1.0.xsd', <<<'EOT'
 <?xml version="1.0" encoding="UTF-8" ?>
 
 <xsd:schema xmlns="http://www.example.com/schema/projectwithxsdinphar"
@@ -44,4 +44,4 @@ $phar->addFromString('schema/project-1.0.xsd', <<<EOT
 </xsd:schema>
 EOT
 );
-$phar->setStub('<?php require_once "phar://ProjectWithXsdExtensionInPhar.phar/ProjectWithXsdExtensionInPhar.php"; __HALT_COMPILER(); ?>');
+$phar->setStub('<?php Phar::mapPhar("ProjectWithXsdExtensionInPhar.phar"); require_once "phar://ProjectWithXsdExtensionInPhar.phar/ProjectWithXsdExtensionInPhar.php"; __HALT_COMPILER(); ?>');

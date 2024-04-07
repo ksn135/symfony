@@ -13,10 +13,6 @@ namespace Symfony\Component\Translation\Dumper;
 
 use Symfony\Component\Translation\MessageCatalogue;
 
-if (!defined('JSON_PRETTY_PRINT')) {
-    define('JSON_PRETTY_PRINT', 128);
-}
-
 /**
  * JsonFileDumper generates an json formatted string representation of a message catalogue.
  *
@@ -24,18 +20,14 @@ if (!defined('JSON_PRETTY_PRINT')) {
  */
 class JsonFileDumper extends FileDumper
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function format(MessageCatalogue $messages, $domain = 'messages')
+    public function formatCatalogue(MessageCatalogue $messages, string $domain, array $options = []): string
     {
-        return json_encode($messages->all($domain), JSON_PRETTY_PRINT);
+        $flags = $options['json_encoding'] ?? \JSON_PRETTY_PRINT;
+
+        return json_encode($messages->all($domain), $flags);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function getExtension()
+    protected function getExtension(): string
     {
         return 'json';
     }

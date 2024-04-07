@@ -19,7 +19,6 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
  * You can use a custom factory if you want to customize the execution context
  * that is passed through the validation run.
  *
- * @since  2.5
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
 interface ExecutionContextFactoryInterface
@@ -27,11 +26,8 @@ interface ExecutionContextFactoryInterface
     /**
      * Creates a new execution context.
      *
-     * @param ValidatorInterface $validator The validator
-     * @param mixed              $root      The root value of the validated
-     *                                      object graph
-     *
-     * @return ExecutionContextInterface The new execution context
+     * @param mixed $root The root value of the validated
+     *                    object graph
      */
-    public function createContext(ValidatorInterface $validator, $root);
+    public function createContext(ValidatorInterface $validator, mixed $root): ExecutionContextInterface;
 }

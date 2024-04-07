@@ -22,22 +22,15 @@ use Symfony\Component\Intl\Data\Bundle\Writer\BundleWriterInterface;
  */
 class GeneratorConfig
 {
-    /**
-     * @var string
-     */
-    private $sourceDir;
-
-    /**
-     * @var string
-     */
-    private $icuVersion;
+    private string $sourceDir;
+    private string $icuVersion;
 
     /**
      * @var BundleWriterInterface[]
      */
-    private $bundleWriters = array();
+    private array $bundleWriters = [];
 
-    public function __construct($sourceDir, $icuVersion)
+    public function __construct(string $sourceDir, string $icuVersion)
     {
         $this->sourceDir = $sourceDir;
         $this->icuVersion = $icuVersion;
@@ -45,11 +38,8 @@ class GeneratorConfig
 
     /**
      * Adds a writer to be used during the data conversion.
-     *
-     * @param string                $targetDir The output directory
-     * @param BundleWriterInterface $writer    The writer instance
      */
-    public function addBundleWriter($targetDir, BundleWriterInterface $writer)
+    public function addBundleWriter(string $targetDir, BundleWriterInterface $writer): void
     {
         $this->bundleWriters[$targetDir] = $writer;
     }
@@ -59,7 +49,7 @@ class GeneratorConfig
      *
      * @return BundleWriterInterface[]
      */
-    public function getBundleWriters()
+    public function getBundleWriters(): array
     {
         return $this->bundleWriters;
     }
@@ -67,20 +57,16 @@ class GeneratorConfig
     /**
      * Returns the directory where the source versions of the resource bundles
      * are stored.
-     *
-     * @return string An absolute path to a directory.
      */
-    public function getSourceDir()
+    public function getSourceDir(): string
     {
         return $this->sourceDir;
     }
 
     /**
      * Returns the ICU version of the bundles being converted.
-     *
-     * @return string The ICU version string.
      */
-    public function getIcuVersion()
+    public function getIcuVersion(): string
     {
         return $this->icuVersion;
     }

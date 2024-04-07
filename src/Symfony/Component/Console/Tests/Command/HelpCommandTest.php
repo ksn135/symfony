@@ -11,20 +11,24 @@
 
 namespace Symfony\Component\Console\Tests\Command;
 
-use Symfony\Component\Console\Tester\CommandTester;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\HelpCommand;
 use Symfony\Component\Console\Command\ListCommand;
-use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\CommandCompletionTester;
+use Symfony\Component\Console\Tester\CommandTester;
 
-class HelpCommandTest extends \PHPUnit_Framework_TestCase
+class HelpCommandTest extends TestCase
 {
     public function testExecuteForCommandAlias()
     {
         $command = new HelpCommand();
         $command->setApplication(new Application());
         $commandTester = new CommandTester($command);
-        $commandTester->execute(array('command_name' => 'li'));
-        $this->assertRegExp('/list \[--xml\] \[--raw\] \[--format="\.\.\."\] \[namespace\]/', $commandTester->getDisplay(), '->execute() returns a text help for the given command alias');
+        $commandTester->execute(['command_name' => 'li'], ['decorated' => false]);
+        $this->assertStringContainsString('list [options] [--] [<namespace>]', $commandTester->getDisplay(), '->execute() returns a text help for the given command alias');
+        $this->assertStringContainsString('format=FORMAT', $commandTester->getDisplay(), '->execute() returns a text help for the given command alias');
+        $this->assertStringContainsString('raw', $commandTester->getDisplay(), '->execute() returns a text help for the given command alias');
     }
 
     public function testExecuteForCommand()
@@ -32,8 +36,10 @@ class HelpCommandTest extends \PHPUnit_Framework_TestCase
         $command = new HelpCommand();
         $commandTester = new CommandTester($command);
         $command->setCommand(new ListCommand());
-        $commandTester->execute(array());
-        $this->assertRegExp('/list \[--xml\] \[--raw\] \[--format="\.\.\."\] \[namespace\]/', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $commandTester->execute([], ['decorated' => false]);
+        $this->assertStringContainsString('list [options] [--] [<namespace>]', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $this->assertStringContainsString('format=FORMAT', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $this->assertStringContainsString('raw', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
     }
 
     public function testExecuteForCommandWithXmlOption()
@@ -41,24 +47,57 @@ class HelpCommandTest extends \PHPUnit_Framework_TestCase
         $command = new HelpCommand();
         $commandTester = new CommandTester($command);
         $command->setCommand(new ListCommand());
-        $commandTester->execute(array('--format' => 'xml'));
-        $this->assertRegExp('/<command/', $commandTester->getDisplay(), '->execute() returns an XML help text if --xml is passed');
+        $commandTester->execute(['--format' => 'xml']);
+        $this->assertStringContainsString('<command', $commandTester->getDisplay(), '->execute() returns an XML help text if --xml is passed');
     }
 
     public function testExecuteForApplicationCommand()
     {
         $application = new Application();
         $commandTester = new CommandTester($application->get('help'));
-        $commandTester->execute(array('command_name' => 'list'));
-        $this->assertRegExp('/list \[--xml\] \[--raw\] \[--format="\.\.\."\] \[namespace\]/', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $commandTester->execute(['command_name' => 'list']);
+        $this->assertStringContainsString('list [options] [--] [<namespace>]', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $this->assertStringContainsString('format=FORMAT', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $this->assertStringContainsString('raw', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
     }
 
     public function testExecuteForApplicationCommandWithXmlOption()
     {
         $application = new Application();
         $commandTester = new CommandTester($application->get('help'));
-        $commandTester->execute(array('command_name' => 'list', '--format' => 'xml'));
-        $this->assertRegExp('/list \[--xml\] \[--raw\] \[--format="\.\.\."\] \[namespace\]/', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
-        $this->assertRegExp('/<command/', $commandTester->getDisplay(), '->execute() returns an XML help text if --format=xml is passed');
+        $commandTester->execute(['command_name' => 'list', '--format' => 'xml']);
+        $this->assertStringContainsString('list [--raw] [--format FORMAT] [--short] [--] [&lt;namespace&gt;]', $commandTester->getDisplay(), '->execute() returns a text help for the given command');
+        $this->assertStringContainsString('<command', $commandTester->getDisplay(), '->execute() returns an XML help text if --format=xml is passed');
+    }
+
+    /**
+     * @dataProvider provideCompletionSuggestions
+     */
+    public function testComplete(array $input, array $expectedSuggestions)
+    {
+        require_once realpath(__DIR__.'/../Fixtures/FooCommand.php');
+        $application = new Application();
+        $application->add(new \FooCommand());
+        $tester = new CommandCompletionTester($application->get('help'));
+        $suggestions = $tester->complete($input, 2);
+        $this->assertSame($expectedSuggestions, $suggestions);
+    }
+
+    public static function provideCompletionSuggestions()
+    {
+        yield 'option --format' => [
+            ['--format', ''],
+            ['txt', 'xml', 'json', 'md', 'rst'],
+        ];
+
+        yield 'nothing' => [
+            [''],
+            ['completion', 'help', 'list', 'foo:bar'],
+        ];
+
+        yield 'command_name' => [
+            ['f'],
+            ['completion', 'help', 'list', 'foo:bar'],
+        ];
     }
 }

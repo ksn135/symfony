@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\HttpKernel\Controller;
 
+use Symfony\Component\HttpKernel\Fragment\FragmentRendererInterface;
+
 /**
  * Acts as a marker and a data holder for a Controller.
  *
@@ -20,25 +22,23 @@ namespace Symfony\Component\HttpKernel\Controller;
  *
  * @author Fabien Potencier <fabien@symfony.com>
  *
- * @see Symfony\Component\HttpKernel\FragmentRenderer
- * @see Symfony\Component\HttpKernel\Fragment\FragmentRendererInterface
+ * @see FragmentRendererInterface
  */
 class ControllerReference
 {
-    public $controller;
-    public $attributes = array();
-    public $query = array();
+    public array $attributes = [];
+    public array $query = [];
 
     /**
-     * Constructor.
-     *
      * @param string $controller The controller name
      * @param array  $attributes An array of parameters to add to the Request attributes
      * @param array  $query      An array of parameters to add to the Request query string
      */
-    public function __construct($controller, array $attributes = array(), array $query = array())
-    {
-        $this->controller = $controller;
+    public function __construct(
+        public string $controller,
+        array $attributes = [],
+        array $query = [],
+    ) {
         $this->attributes = $attributes;
         $this->query = $query;
     }

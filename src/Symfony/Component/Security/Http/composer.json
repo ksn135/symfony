@@ -3,7 +3,7 @@
     "type": "library",
     "description": "Symfony Security Component - HTTP Integration",
     "keywords": [],
-    "homepage": "http://symfony.com",
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {
@@ -12,33 +12,44 @@
         },
         {
             "name": "Symfony Community",
-            "homepage": "http://symfony.com/contributors"
+            "homepage": "https://symfony.com/contributors"
         }
     ],
     "require": {
-        "php": ">=5.3.3",
-        "symfony/security-core": "~2.4",
-        "symfony/event-dispatcher": "~2.1",
-        "symfony/http-foundation": "~2.4",
-        "symfony/http-kernel": "~2.4"
+        "php": ">=8.2",
+        "symfony/deprecation-contracts": "^2.5|^3",
+        "symfony/http-foundation": "^6.4|^7.0",
+        "symfony/http-kernel": "^6.4|^7.0",
+        "symfony/polyfill-mbstring": "~1.0",
+        "symfony/property-access": "^6.4|^7.0",
+        "symfony/security-core": "^6.4|^7.0",
+        "symfony/service-contracts": "^2.5|^3"
     },
     "require-dev": {
-        "symfony/routing": "~2.2",
-        "symfony/security-csrf": "~2.4",
-        "psr/log": "~1.0"
+        "symfony/cache": "^6.4|^7.0",
+        "symfony/clock": "^6.4|^7.0",
+        "symfony/expression-language": "^6.4|^7.0",
+        "symfony/http-client": "^6.4|^7.0",
+        "symfony/http-client-contracts": "^3.0",
+        "symfony/rate-limiter": "^6.4|^7.0",
+        "symfony/routing": "^6.4|^7.0",
+        "symfony/security-csrf": "^6.4|^7.0",
+        "symfony/translation": "^6.4|^7.0",
+        "psr/log": "^1|^2|^3",
+        "web-token/jwt-library": "^3.3.2"
     },
-    "suggest": {
-        "symfony/security-csrf": "For using tokens to protect authentication/logout attempts",
-        "symfony/routing": "For using the HttpUtils class to create sub-requests, redirect the user, and match URLs"
+    "conflict": {
+        "symfony/clock": "<6.4",
+        "symfony/event-dispatcher": "<6.4",
+        "symfony/http-client-contracts": "<3.0",
+        "symfony/security-bundle": "<6.4",
+        "symfony/security-csrf": "<6.4"
     },
     "autoload": {
-        "psr-0": { "Symfony\\Component\\Security\\Http\\": "" }
+        "psr-4": { "Symfony\\Component\\Security\\Http\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
     },
-    "target-dir": "Symfony/Component/Security/Http",
-    "minimum-stability": "dev",
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev"
-        }
-    }
+    "minimum-stability": "dev"
 }

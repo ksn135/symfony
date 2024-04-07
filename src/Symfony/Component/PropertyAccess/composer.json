@@ -1,9 +1,9 @@
 {
     "name": "symfony/property-access",
     "type": "library",
-    "description": "Symfony PropertyAccess Component",
-    "keywords": ["property", "index", "access", "object", "array", "extraction", "injection", "reflection", "property path"],
-    "homepage": "http://symfony.com",
+    "description": "Provides functions to read and write from/to an object or array using a simple string notation",
+    "keywords": ["property", "index", "access", "object", "array", "extraction", "injection", "reflection", "property-path"],
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {
@@ -12,20 +12,21 @@
         },
         {
             "name": "Symfony Community",
-            "homepage": "http://symfony.com/contributors"
+            "homepage": "https://symfony.com/contributors"
         }
     ],
     "require": {
-        "php": ">=5.3.3"
+        "php": ">=8.2",
+        "symfony/property-info": "^6.4|^7.0"
+    },
+    "require-dev": {
+        "symfony/cache": "^6.4|^7.0"
     },
     "autoload": {
-        "psr-0": { "Symfony\\Component\\PropertyAccess\\": "" }
+        "psr-4": { "Symfony\\Component\\PropertyAccess\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
     },
-    "target-dir": "Symfony/Component/PropertyAccess",
-    "minimum-stability": "dev",
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev"
-        }
-    }
+    "minimum-stability": "dev"
 }

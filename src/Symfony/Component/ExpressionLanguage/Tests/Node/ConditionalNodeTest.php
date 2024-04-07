@@ -14,21 +14,29 @@ namespace Symfony\Component\ExpressionLanguage\Tests\Node;
 use Symfony\Component\ExpressionLanguage\Node\ConditionalNode;
 use Symfony\Component\ExpressionLanguage\Node\ConstantNode;
 
-class ConditionalNodeTest extends AbstractNodeTest
+class ConditionalNodeTest extends AbstractNodeTestCase
 {
-    public function getEvaluateData()
+    public static function getEvaluateData(): array
     {
-        return array(
-            array(1, new ConditionalNode(new ConstantNode(true), new ConstantNode(1), new ConstantNode(2))),
-            array(2, new ConditionalNode(new ConstantNode(false), new ConstantNode(1), new ConstantNode(2))),
-        );
+        return [
+            [1, new ConditionalNode(new ConstantNode(true), new ConstantNode(1), new ConstantNode(2))],
+            [2, new ConditionalNode(new ConstantNode(false), new ConstantNode(1), new ConstantNode(2))],
+        ];
     }
 
-    public function getCompileData()
+    public static function getCompileData(): array
     {
-        return array(
-            array('((true) ? (1) : (2))', new ConditionalNode(new ConstantNode(true), new ConstantNode(1), new ConstantNode(2))),
-            array('((false) ? (1) : (2))', new ConditionalNode(new ConstantNode(false), new ConstantNode(1), new ConstantNode(2))),
-        );
+        return [
+            ['((true) ? (1) : (2))', new ConditionalNode(new ConstantNode(true), new ConstantNode(1), new ConstantNode(2))],
+            ['((false) ? (1) : (2))', new ConditionalNode(new ConstantNode(false), new ConstantNode(1), new ConstantNode(2))],
+        ];
+    }
+
+    public static function getDumpData(): array
+    {
+        return [
+            ['(true ? 1 : 2)', new ConditionalNode(new ConstantNode(true), new ConstantNode(1), new ConstantNode(2))],
+            ['(false ? 1 : 2)', new ConditionalNode(new ConstantNode(false), new ConstantNode(1), new ConstantNode(2))],
+        ];
     }
 }

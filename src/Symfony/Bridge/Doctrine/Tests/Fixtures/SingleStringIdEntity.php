@@ -11,26 +11,23 @@
 
 namespace Symfony\Bridge\Doctrine\Tests\Fixtures;
 
-use Doctrine\ORM\Mapping\Id;
 use Doctrine\ORM\Mapping\Column;
 use Doctrine\ORM\Mapping\Entity;
+use Doctrine\ORM\Mapping\Id;
 
-/** @Entity */
+#[Entity]
 class SingleStringIdEntity
 {
-    /** @Id @Column(type="string") */
-    protected $id;
+    public function __construct(
+        #[Id, Column]
+        protected string $id,
 
-    /** @Column(type="string") */
-    public $name;
-
-    public function __construct($id, $name)
-    {
-        $this->id = $id;
-        $this->name = $name;
+        #[Column]
+        public string $name,
+    ) {
     }
 
-    public function __toString()
+    public function __toString(): string
     {
         return $this->name;
     }

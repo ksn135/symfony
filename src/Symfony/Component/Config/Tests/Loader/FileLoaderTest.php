@@ -11,27 +11,27 @@
 
 namespace Symfony\Component\Config\Tests\Loader;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Exception\FileLoaderImportCircularReferenceException;
+use Symfony\Component\Config\FileLocator;
+use Symfony\Component\Config\FileLocatorInterface;
 use Symfony\Component\Config\Loader\FileLoader;
 use Symfony\Component\Config\Loader\LoaderResolver;
-use Symfony\Component\Config\Exception\FileLoaderImportCircularReferenceException;
 
-class FileLoaderTest extends \PHPUnit_Framework_TestCase
+class FileLoaderTest extends TestCase
 {
-    /**
-     * @covers Symfony\Component\Config\Loader\FileLoader
-     */
     public function testImportWithFileLocatorDelegation()
     {
-        $locatorMock = $this->getMock('Symfony\Component\Config\FileLocatorInterface');
+        $locatorMock = $this->createMock(FileLocatorInterface::class);
 
-        $locatorMockForAdditionalLoader = $this->getMock('Symfony\Component\Config\FileLocatorInterface');
+        $locatorMockForAdditionalLoader = $this->createMock(FileLocatorInterface::class);
         $locatorMockForAdditionalLoader->expects($this->any())->method('locate')->will($this->onConsecutiveCalls(
-                array('path/to/file1'),                    // Default
-                array('path/to/file1', 'path/to/file2'),   // First is imported
-                array('path/to/file1', 'path/to/file2'),   // Second is imported
-                array('path/to/file1'),                    // Exception
-                array('path/to/file1', 'path/to/file2')    // Exception
-                ));
+            ['path/to/file1'],                    // Default
+            ['path/to/file1', 'path/to/file2'],   // First is imported
+            ['path/to/file1', 'path/to/file2'],   // Second is imported
+            ['path/to/file1'],                    // Exception
+            ['path/to/file1', 'path/to/file2']    // Exception
+        ));
 
         $fileLoader = new TestFileLoader($locatorMock);
         $fileLoader->setSupports(false);
@@ -40,7 +40,7 @@ class FileLoaderTest extends \PHPUnit_Framework_TestCase
         $additionalLoader = new TestFileLoader($locatorMockForAdditionalLoader);
         $additionalLoader->setCurrentDir('.');
 
-        $fileLoader->setResolver($loaderResolver = new LoaderResolver(array($fileLoader, $additionalLoader)));
+        $fileLoader->setResolver($loaderResolver = new LoaderResolver([$fileLoader, $additionalLoader]));
 
         // Default case
         $this->assertSame('path/to/file1', $fileLoader->import('my_resource'));
@@ -57,7 +57,7 @@ class FileLoaderTest extends \PHPUnit_Framework_TestCase
             $fileLoader->import('my_resource');
             $this->fail('->import() throws a FileLoaderImportCircularReferenceException if the resource is already loading');
         } catch (\Exception $e) {
-            $this->assertInstanceOf('Symfony\Component\Config\Exception\FileLoaderImportCircularReferenceException', $e, '->import() throws a FileLoaderImportCircularReferenceException if the resource is already loading');
+            $this->assertInstanceOf(FileLoaderImportCircularReferenceException::class, $e, '->import() throws a FileLoaderImportCircularReferenceException if the resource is already loading');
         }
 
         // Check exception throws if all files are already loading
@@ -66,41 +66,111 @@ class FileLoaderTest extends \PHPUnit_Framework_TestCase
             $fileLoader->import('my_resource');
             $this->fail('->import() throws a FileLoaderImportCircularReferenceException if the resource is already loading');
         } catch (\Exception $e) {
-            $this->assertInstanceOf('Symfony\Component\Config\Exception\FileLoaderImportCircularReferenceException', $e, '->import() throws a FileLoaderImportCircularReferenceException if the resource is already loading');
+            $this->assertInstanceOf(FileLoaderImportCircularReferenceException::class, $e, '->import() throws a FileLoaderImportCircularReferenceException if the resource is already loading');
         }
+    }
+
+    public function testImportWithGlobLikeResource()
+    {
+        $locatorMock = $this->createMock(FileLocatorInterface::class);
+        $locatorMock->expects($this->once())->method('locate')->willReturn('');
+        $loader = new TestFileLoader($locatorMock);
+
+        $this->assertSame('[foo]', $loader->import('[foo]'));
+    }
+
+    public function testImportWithGlobLikeResourceWhichContainsSlashes()
+    {
+        $locatorMock = $this->createMock(FileLocatorInterface::class);
+        $locatorMock->expects($this->once())->method('locate')->willReturn('');
+        $loader = new TestFileLoader($locatorMock);
+
+        $this->assertNull($loader->import('foo/bar[foo]'));
+    }
+
+    public function testImportWithGlobLikeResourceWhichContainsMultipleLines()
+    {
+        $locatorMock = $this->createMock(FileLocatorInterface::class);
+        $loader = new TestFileLoader($locatorMock);
+
+        $this->assertSame("foo\nfoobar[foo]", $loader->import("foo\nfoobar[foo]"));
+    }
+
+    public function testImportWithGlobLikeResourceWhichContainsSlashesAndMultipleLines()
+    {
+        $locatorMock = $this->createMock(FileLocatorInterface::class);
+        $loader = new TestFileLoader($locatorMock);
+
+        $this->assertSame("foo\nfoo/bar[foo]", $loader->import("foo\nfoo/bar[foo]"));
+    }
+
+    public function testImportWithNoGlobMatch()
+    {
+        $locatorMock = $this->createMock(FileLocatorInterface::class);
+        $locatorMock->expects($this->once())->method('locate')->willReturn('');
+        $loader = new TestFileLoader($locatorMock);
+
+        $this->assertNull($loader->import('./*.abc'));
+    }
+
+    public function testImportWithSimpleGlob()
+    {
+        $loader = new TestFileLoader(new FileLocator(__DIR__));
+
+        $this->assertSame(__FILE__, strtr($loader->import('FileLoaderTest.*'), '/', \DIRECTORY_SEPARATOR));
+    }
+
+    public function testImportWithExclude()
+    {
+        $loader = new TestFileLoader(new FileLocator(__DIR__.'/../Fixtures'));
+        $loadedFiles = $loader->import('Include/*', null, false, null, __DIR__.'/../Fixtures/Include/{ExcludeFile.txt}');
+        $this->assertCount(2, $loadedFiles);
+        $this->assertNotContains('ExcludeFile.txt', $loadedFiles);
+    }
+
+    /**
+     * @dataProvider excludeTrailingSlashConsistencyProvider
+     */
+    public function testExcludeTrailingSlashConsistency(string $exclude)
+    {
+        $loader = new TestFileLoader(new FileLocator(__DIR__.'/../Fixtures'));
+        $loadedFiles = $loader->import('ExcludeTrailingSlash/*', null, false, null, $exclude);
+        $this->assertCount(2, $loadedFiles);
+        $this->assertNotContains('baz.txt', $loadedFiles);
+    }
+
+    public static function excludeTrailingSlashConsistencyProvider(): iterable
+    {
+        yield [__DIR__.'/../Fixtures/Exclude/ExcludeToo/'];
+        yield [__DIR__.'/../Fixtures/Exclude/ExcludeToo'];
+        yield [__DIR__.'/../Fixtures/Exclude/ExcludeToo/*'];
+        yield [__DIR__.'/../Fixtures/*/ExcludeToo'];
+        yield [__DIR__.'/../Fixtures/*/ExcludeToo/'];
+        yield [__DIR__.'/../Fixtures/Exclude/ExcludeToo/*'];
+        yield [__DIR__.'/../Fixtures/Exclude/ExcludeToo/AnotheExcludedFile.txt'];
     }
 }
 
 class TestFileLoader extends FileLoader
 {
-    private $supports = true;
+    private bool $supports = true;
 
-    public function load($resource, $type = null)
+    public function load(mixed $resource, ?string $type = null): mixed
     {
         return $resource;
     }
 
-    public function supports($resource, $type = null)
+    public function supports(mixed $resource, ?string $type = null): bool
     {
         return $this->supports;
     }
 
-    public function addLoading($resource)
+    public function addLoading(string $resource): void
     {
         self::$loading[$resource] = true;
     }
 
-    public function removeLoading($resource)
-    {
-        unset(self::$loading[$resource]);
-    }
-
-    public function clearLoading()
-    {
-        self::$loading = array();
-    }
-
-    public function setSupports($supports)
+    public function setSupports(bool $supports): void
     {
         $this->supports = $supports;
     }

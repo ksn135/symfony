@@ -11,8 +11,8 @@
 
 namespace Symfony\Component\Finder\Tests\Iterator;
 
-use Symfony\Component\Finder\Iterator\SizeRangeFilterIterator;
 use Symfony\Component\Finder\Comparator\NumberComparator;
+use Symfony\Component\Finder\Iterator\SizeRangeFilterIterator;
 
 class SizeRangeFilterIteratorTest extends RealIteratorTestCase
 {
@@ -28,40 +28,42 @@ class SizeRangeFilterIteratorTest extends RealIteratorTestCase
         $this->assertIterator($expected, $iterator);
     }
 
-    public function getAcceptData()
+    public static function getAcceptData()
     {
-        $lessThan1KGreaterThan05K = array(
+        $lessThan1KGreaterThan05K = [
             '.foo',
             '.git',
             'foo',
+            'qux',
             'test.php',
             'toto',
-        );
+            'toto/.git',
+        ];
 
-        return array(
-            array(array(new NumberComparator('< 1K'), new NumberComparator('> 0.5K')), $this->toAbsolute($lessThan1KGreaterThan05K)),
-        );
+        return [
+            [[new NumberComparator('< 1K'), new NumberComparator('> 0.5K')], self::toAbsolute($lessThan1KGreaterThan05K)],
+        ];
     }
 }
 
 class InnerSizeIterator extends \ArrayIterator
 {
-    public function current()
+    public function current(): \SplFileInfo
     {
         return new \SplFileInfo(parent::current());
     }
 
-    public function getFilename()
+    public function getFilename(): string
     {
         return parent::current();
     }
 
-    public function isFile()
+    public function isFile(): bool
     {
         return $this->current()->isFile();
     }
 
-    public function getSize()
+    public function getSize(): int
     {
         return $this->current()->getSize();
     }

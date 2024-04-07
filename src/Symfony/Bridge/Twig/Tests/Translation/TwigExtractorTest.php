@@ -11,33 +11,43 @@
 
 namespace Symfony\Bridge\Twig\Tests\Translation;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\Twig\Extension\TranslationExtension;
 use Symfony\Bridge\Twig\Translation\TwigExtractor;
 use Symfony\Component\Translation\MessageCatalogue;
+use Symfony\Contracts\Translation\TranslatorInterface;
+use Twig\Environment;
+use Twig\Loader\ArrayLoader;
+use Twig\Loader\LoaderInterface;
 
-class TwigExtractorTest extends \PHPUnit_Framework_TestCase
+class TwigExtractorTest extends TestCase
 {
+    public const CUSTOM_DOMAIN = 'domain';
+
     /**
      * @dataProvider getExtractData
      */
     public function testExtract($template, $messages)
     {
-        $loader = new \Twig_Loader_Array(array());
-        $twig = new \Twig_Environment($loader, array(
+        $loader = $this->createMock(LoaderInterface::class);
+        $twig = new Environment($loader, [
             'strict_variables' => true,
             'debug' => true,
             'cache' => false,
             'autoescape' => false,
-        ));
-        $twig->addExtension(new TranslationExtension($this->getMock('Symfony\Component\Translation\TranslatorInterface')));
+        ]);
+        $twig->addExtension(new TranslationExtension($this->createMock(TranslatorInterface::class)));
 
         $extractor = new TwigExtractor($twig);
         $extractor->setPrefix('prefix');
         $catalogue = new MessageCatalogue('en');
 
         $m = new \ReflectionMethod($extractor, 'extractTemplate');
-        $m->setAccessible(true);
         $m->invoke($extractor, $template, $catalogue);
+
+        if (0 === \count($messages)) {
+            $this->assertSame($catalogue->all(), $messages);
+        }
 
         foreach ($messages as $key => $domain) {
             $this->assertTrue($catalogue->has($key, $domain));
@@ -45,42 +55,100 @@ class TwigExtractorTest extends \PHPUnit_Framework_TestCase
         }
     }
 
-    public function getExtractData()
+    public static function getExtractData()
     {
-        return array(
-            array('{{ "new key" | trans() }}', array('new key' => 'messages')),
-            array('{{ "new key" | trans() | upper }}', array('new key' => 'messages')),
-            array('{{ "new key" | trans({}, "domain") }}', array('new key' => 'domain')),
-            array('{{ "new key" | transchoice(1) }}', array('new key' => 'messages')),
-            array('{{ "new key" | transchoice(1) | upper }}', array('new key' => 'messages')),
-            array('{{ "new key" | transchoice(1, {}, "domain") }}', array('new key' => 'domain')),
-            array('{% trans %}new key{% endtrans %}', array('new key' => 'messages')),
-            array('{% trans %}  new key  {% endtrans %}', array('new key' => 'messages')),
-            array('{% trans from "domain" %}new key{% endtrans %}', array('new key' => 'domain')),
-            array('{% set foo = "new key" | trans %}', array('new key' => 'messages')),
-            array('{{ 1 ? "new key" | trans : "another key" | trans }}', array('new key' => 'messages', 'another key' => 'messages')),
+        return [
+            ['{{ "new key" | trans() }}', ['new key' => 'messages']],
+            ['{{ "new key" | trans() | upper }}', ['new key' => 'messages']],
+            ['{{ "new key" | trans({}, "domain") }}', ['new key' => 'domain']],
+            ['{% trans %}new key{% endtrans %}', ['new key' => 'messages']],
+            ['{% trans %}  new key  {% endtrans %}', ['new key' => 'messages']],
+            ['{% trans from "domain" %}new key{% endtrans %}', ['new key' => 'domain']],
+            ['{% set foo = "new key" | trans %}', ['new key' => 'messages']],
+            ['{{ 1 ? "new key" | trans : "another key" | trans }}', ['new key' => 'messages', 'another key' => 'messages']],
+            ['{{ t("new key") | trans() }}', ['new key' => 'messages']],
+            ['{% set foo = t("new key") %}', ['new key' => 'messages']],
+            ['{{ t("new key", {}, "domain") | trans() }}', ['new key' => 'domain']],
+            ['{{ 1 ? t("new key") | trans : t("another key") | trans }}', ['new key' => 'messages', 'another key' => 'messages']],
 
             // make sure 'trans_default_domain' tag is supported
-            array('{% trans_default_domain "domain" %}{{ "new key"|trans }}', array('new key' => 'domain')),
-            array('{% trans_default_domain "domain" %}{{ "new key"|transchoice }}', array('new key' => 'domain')),
-            array('{% trans_default_domain "domain" %}{% trans %}new key{% endtrans %}', array('new key' => 'domain')),
+            ['{% trans_default_domain "domain" %}{{ "new key"|trans }}', ['new key' => 'domain']],
+            ['{% trans_default_domain "domain" %}{% trans %}new key{% endtrans %}', ['new key' => 'domain']],
 
             // make sure this works with twig's named arguments
-            array('{{ "new key" | trans(domain="domain") }}', array('new key' => 'domain')),
-            array('{{ "new key" | transchoice(domain="domain", count=1) }}', array('new key' => 'domain')),
-        );
+            ['{{ "new key" | trans(domain="domain") }}', ['new key' => 'domain']],
+
+            // make sure this works with const domain
+            ['{{ "new key" | trans({}, constant(\'Symfony\\\\Bridge\\\\Twig\\\\Tests\\\\Translation\\\\TwigExtractorTest::CUSTOM_DOMAIN\')) }}', ['new key' => self::CUSTOM_DOMAIN]],
+            ['{% trans from constant(\'Symfony\\\\Bridge\\\\Twig\\\\Tests\\\\Translation\\\\TwigExtractorTest::CUSTOM_DOMAIN\') %}new key{% endtrans %}', ['new key' => self::CUSTOM_DOMAIN]],
+            ['{{ t("new key", {}, constant(\'Symfony\\\\Bridge\\\\Twig\\\\Tests\\\\Translation\\\\TwigExtractorTest::CUSTOM_DOMAIN\')) | trans() }}', ['new key' => self::CUSTOM_DOMAIN]],
+
+            // concat translations
+            ['{{ ("new" ~ " key") | trans() }}', ['new key' => 'messages']],
+            ['{{ ("another " ~ "new " ~ "key") | trans() }}', ['another new key' => 'messages']],
+            ['{{ ("new" ~ " key") | trans(domain="domain") }}', ['new key' => 'domain']],
+            ['{{ ("another " ~ "new " ~ "key") | trans(domain="domain") }}', ['another new key' => 'domain']],
+            // if it has a variable or other expression, we cannot extract it
+            ['{% set foo = "new" %} {{ ("new " ~ foo ~ "key") | trans() }}', []],
+            ['{{ ("foo " ~ "new"|trans ~ "key") | trans() }}', ['new' => 'messages']],
+        ];
     }
 
     /**
-     * @expectedException        \Twig_Error
-     * @expectedExceptionMessage Unclosed "block" in "extractor/syntax_error.twig" at line 1
+     * @dataProvider resourcesWithSyntaxErrorsProvider
      */
-    public function testExtractSyntaxError()
+    public function testExtractSyntaxError($resources, array $messages)
     {
-        $twig = new \Twig_Environment(new \Twig_Loader_Array(array()));
-        $twig->addExtension(new TranslationExtension($this->getMock('Symfony\Component\Translation\TranslatorInterface')));
+        $twig = new Environment($this->createMock(LoaderInterface::class));
+        $twig->addExtension(new TranslationExtension($this->createMock(TranslatorInterface::class)));
 
         $extractor = new TwigExtractor($twig);
-        $extractor->extract(__DIR__.'/../Fixtures', new MessageCatalogue('en'));
+        $catalogue = new MessageCatalogue('en');
+        $extractor->extract($resources, $catalogue);
+        $this->assertSame($messages, $catalogue->all());
+    }
+
+    public static function resourcesWithSyntaxErrorsProvider(): array
+    {
+        return [
+            [__DIR__.'/../Fixtures', ['messages' => ['Hi!' => 'Hi!']]],
+            [__DIR__.'/../Fixtures/extractor/syntax_error.twig', []],
+            [new \SplFileInfo(__DIR__.'/../Fixtures/extractor/syntax_error.twig'), []],
+        ];
+    }
+
+    /**
+     * @dataProvider resourceProvider
+     */
+    public function testExtractWithFiles($resource)
+    {
+        $loader = new ArrayLoader([]);
+        $twig = new Environment($loader, [
+            'strict_variables' => true,
+            'debug' => true,
+            'cache' => false,
+            'autoescape' => false,
+        ]);
+        $twig->addExtension(new TranslationExtension($this->createMock(TranslatorInterface::class)));
+
+        $extractor = new TwigExtractor($twig);
+        $catalogue = new MessageCatalogue('en');
+        $extractor->extract($resource, $catalogue);
+
+        $this->assertTrue($catalogue->has('Hi!', 'messages'));
+        $this->assertEquals('Hi!', $catalogue->get('Hi!', 'messages'));
+    }
+
+    public static function resourceProvider(): array
+    {
+        $directory = __DIR__.'/../Fixtures/extractor/';
+
+        return [
+            [$directory.'with_translations.html.twig'],
+            [[$directory.'with_translations.html.twig']],
+            [[new \SplFileInfo($directory.'with_translations.html.twig')]],
+            [new \ArrayObject([$directory.'with_translations.html.twig'])],
+            [new \ArrayObject([new \SplFileInfo($directory.'with_translations.html.twig')])],
+        ];
     }
 }

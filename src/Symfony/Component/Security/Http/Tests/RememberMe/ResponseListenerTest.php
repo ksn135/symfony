@@ -11,27 +11,46 @@
 
 namespace Symfony\Component\Security\Http\Tests\RememberMe;
 
-use Symfony\Component\Security\Http\RememberMe\ResponseListener;
-use Symfony\Component\Security\Http\RememberMe\RememberMeServicesInterface;
-use Symfony\Component\HttpFoundation\Request;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Security\Http\RememberMe\ResponseListener;
 
-class ResponseListenerTest extends \PHPUnit_Framework_TestCase
+class ResponseListenerTest extends TestCase
 {
     public function testRememberMeCookieIsSentWithResponse()
     {
-        $cookie = new Cookie('rememberme');
+        $cookie = new Cookie('rememberme', null, 0, '/', null, false, true, false, null);
 
-        $request = $this->getRequest(array(
-            RememberMeServicesInterface::COOKIE_ATTR_NAME => $cookie,
-        ));
+        $request = $this->getRequest([
+            ResponseListener::COOKIE_ATTR_NAME => $cookie,
+        ]);
 
         $response = $this->getResponse();
         $response->headers->expects($this->once())->method('setCookie')->with($cookie);
 
         $listener = new ResponseListener();
         $listener->onKernelResponse($this->getEvent($request, $response));
+    }
+
+    public function testRememberMeCookieIsNotSendWithResponseForSubRequests()
+    {
+        $cookie = new Cookie('rememberme', null, 0, '/', null, false, true, false, null);
+
+        $request = $this->getRequest([
+            ResponseListener::COOKIE_ATTR_NAME => $cookie,
+        ]);
+
+        $response = $this->getResponse();
+        $response->headers->expects($this->never())->method('setCookie');
+
+        $listener = new ResponseListener();
+        $listener->onKernelResponse($this->getEvent($request, $response, HttpKernelInterface::SUB_REQUEST));
     }
 
     public function testRememberMeCookieIsNotSendWithResponse()
@@ -47,12 +66,10 @@ class ResponseListenerTest extends \PHPUnit_Framework_TestCase
 
     public function testItSubscribesToTheOnKernelResponseEvent()
     {
-        $listener = new ResponseListener();
-
-        $this->assertSame(array(KernelEvents::RESPONSE => 'onKernelResponse'), ResponseListener::getSubscribedEvents());
+        $this->assertSame([KernelEvents::RESPONSE => 'onKernelResponse'], ResponseListener::getSubscribedEvents());
     }
 
-    private function getRequest(array $attributes = array())
+    private function getRequest(array $attributes = [])
     {
         $request = new Request();
 
@@ -65,21 +82,14 @@ class ResponseListenerTest extends \PHPUnit_Framework_TestCase
 
     private function getResponse()
     {
-        $response = $this->getMock('Symfony\Component\HttpFoundation\Response');
-        $response->headers = $this->getMock('Symfony\Component\HttpFoundation\ResponseHeaderBag');
+        $response = new Response();
+        $response->headers = $this->createMock(ResponseHeaderBag::class);
 
         return $response;
     }
 
-    private function getEvent($request, $response)
+    private function getEvent(Request $request, Response $response, int $type = HttpKernelInterface::MAIN_REQUEST): ResponseEvent
     {
-        $event = $this->getMockBuilder('Symfony\Component\HttpKernel\Event\FilterResponseEvent')
-            ->disableOriginalConstructor()
-            ->getMock();
-
-        $event->expects($this->any())->method('getRequest')->will($this->returnValue($request));
-        $event->expects($this->any())->method('getResponse')->will($this->returnValue($response));
-
-        return $event;
+        return new ResponseEvent($this->createMock(HttpKernelInterface::class), $request, $type, $response);
     }
 }

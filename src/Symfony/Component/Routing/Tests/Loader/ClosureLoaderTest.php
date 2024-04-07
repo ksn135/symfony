@@ -11,11 +11,12 @@
 
 namespace Symfony\Component\Routing\Tests\Loader;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Routing\Loader\ClosureLoader;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouteCollection;
 
-class ClosureLoaderTest extends \PHPUnit_Framework_TestCase
+class ClosureLoaderTest extends TestCase
 {
     public function testSupports()
     {
@@ -32,10 +33,12 @@ class ClosureLoaderTest extends \PHPUnit_Framework_TestCase
 
     public function testLoad()
     {
-        $loader = new ClosureLoader();
+        $loader = new ClosureLoader('some-env');
 
         $route = new Route('/');
-        $routes = $loader->load(function () use ($route) {
+        $routes = $loader->load(function (?string $env = null) use ($route) {
+            $this->assertSame('some-env', $env);
+
             $routes = new RouteCollection();
 
             $routes->add('foo', $route);

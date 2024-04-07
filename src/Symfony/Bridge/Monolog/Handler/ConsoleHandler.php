@@ -11,8 +11,11 @@
 
 namespace Symfony\Bridge\Monolog\Handler;
 
+use Monolog\Formatter\FormatterInterface;
+use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\AbstractProcessingHandler;
-use Monolog\Logger;
+use Monolog\Level;
+use Monolog\LogRecord;
 use Symfony\Bridge\Monolog\Formatter\ConsoleFormatter;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
@@ -20,6 +23,7 @@ use Symfony\Component\Console\Event\ConsoleTerminateEvent;
 use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
  * Writes logs to the console output depending on its verbosity setting.
@@ -38,54 +42,43 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * @author Tobias Schultze <http://tobion.de>
  */
-class ConsoleHandler extends AbstractProcessingHandler implements EventSubscriberInterface
+final class ConsoleHandler extends AbstractProcessingHandler implements EventSubscriberInterface
 {
-    /**
-     * @var OutputInterface|null
-     */
-    private $output;
+    private ?OutputInterface $output;
+    private array $verbosityLevelMap = [
+        OutputInterface::VERBOSITY_QUIET => Level::Error,
+        OutputInterface::VERBOSITY_NORMAL => Level::Warning,
+        OutputInterface::VERBOSITY_VERBOSE => Level::Notice,
+        OutputInterface::VERBOSITY_VERY_VERBOSE => Level::Info,
+        OutputInterface::VERBOSITY_DEBUG => Level::Debug,
+    ];
+    private array $consoleFormatterOptions;
 
     /**
-     * @var array
-     */
-    private $verbosityLevelMap = array(
-        OutputInterface::VERBOSITY_NORMAL => Logger::WARNING,
-        OutputInterface::VERBOSITY_VERBOSE => Logger::NOTICE,
-        OutputInterface::VERBOSITY_VERY_VERBOSE => Logger::INFO,
-        OutputInterface::VERBOSITY_DEBUG => Logger::DEBUG,
-    );
-
-    /**
-     * Constructor.
-     *
      * @param OutputInterface|null $output            The console output to use (the handler remains disabled when passing null
      *                                                until the output is set, e.g. by using console events)
      * @param bool                 $bubble            Whether the messages that are handled can bubble up the stack
      * @param array                $verbosityLevelMap Array that maps the OutputInterface verbosity to a minimum logging
      *                                                level (leave empty to use the default mapping)
      */
-    public function __construct(OutputInterface $output = null, $bubble = true, array $verbosityLevelMap = array())
+    public function __construct(?OutputInterface $output = null, bool $bubble = true, array $verbosityLevelMap = [], array $consoleFormatterOptions = [])
     {
-        parent::__construct(Logger::DEBUG, $bubble);
+        parent::__construct(Level::Debug, $bubble);
         $this->output = $output;
 
         if ($verbosityLevelMap) {
             $this->verbosityLevelMap = $verbosityLevelMap;
         }
+
+        $this->consoleFormatterOptions = $consoleFormatterOptions;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function isHandling(array $record)
+    public function isHandling(LogRecord $record): bool
     {
         return $this->updateLevel() && parent::isHandling($record);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function handle(array $record)
+    public function handle(LogRecord $record): bool
     {
         // we have to update the logging level each time because the verbosity of the
         // console output might have changed in the meantime (it is not immutable)
@@ -94,10 +87,8 @@ class ConsoleHandler extends AbstractProcessingHandler implements EventSubscribe
 
     /**
      * Sets the console output to use for printing logs.
-     *
-     * @param OutputInterface $output The console output to use
      */
-    public function setOutput(OutputInterface $output)
+    public function setOutput(OutputInterface $output): void
     {
         $this->output = $output;
     }
@@ -105,7 +96,7 @@ class ConsoleHandler extends AbstractProcessingHandler implements EventSubscribe
     /**
      * Disables the output.
      */
-    public function close()
+    public function close(): void
     {
         $this->output = null;
 
@@ -115,70 +106,70 @@ class ConsoleHandler extends AbstractProcessingHandler implements EventSubscribe
     /**
      * Before a command is executed, the handler gets activated and the console output
      * is set in order to know where to write the logs.
-     *
-     * @param ConsoleCommandEvent $event
      */
-    public function onCommand(ConsoleCommandEvent $event)
+    public function onCommand(ConsoleCommandEvent $event): void
     {
-        $this->setOutput($event->getOutput());
+        $output = $event->getOutput();
+        if ($output instanceof ConsoleOutputInterface) {
+            $output = $output->getErrorOutput();
+        }
+
+        $this->setOutput($output);
     }
 
     /**
      * After a command has been executed, it disables the output.
-     *
-     * @param ConsoleTerminateEvent $event
      */
-    public function onTerminate(ConsoleTerminateEvent $event)
+    public function onTerminate(ConsoleTerminateEvent $event): void
     {
         $this->close();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
-        return array(
-            ConsoleEvents::COMMAND => array('onCommand', 255),
-            ConsoleEvents::TERMINATE => array('onTerminate', -255),
-        );
+        return [
+            ConsoleEvents::COMMAND => ['onCommand', 255],
+            ConsoleEvents::TERMINATE => ['onTerminate', -255],
+        ];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function write(array $record)
+    protected function write(LogRecord $record): void
     {
-        if ($record['level'] >= Logger::ERROR && $this->output instanceof ConsoleOutputInterface) {
-            $this->output->getErrorOutput()->write((string) $record['formatted']);
-        } else {
-            $this->output->write((string) $record['formatted']);
+        // at this point we've determined for sure that we want to output the record, so use the output's own verbosity
+        $this->output->write((string) $record->formatted, false, $this->output->getVerbosity());
+    }
+
+    protected function getDefaultFormatter(): FormatterInterface
+    {
+        if (!class_exists(CliDumper::class)) {
+            return new LineFormatter();
         }
-    }
+        if (!$this->output) {
+            return new ConsoleFormatter($this->consoleFormatterOptions);
+        }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function getDefaultFormatter()
-    {
-        return new ConsoleFormatter();
+        return new ConsoleFormatter(array_replace([
+            'colors' => $this->output->isDecorated(),
+            'multiline' => OutputInterface::VERBOSITY_DEBUG <= $this->output->getVerbosity(),
+        ], $this->consoleFormatterOptions));
     }
 
     /**
      * Updates the logging level based on the verbosity setting of the console output.
      *
-     * @return bool    Whether the handler is enabled and verbosity is not set to quiet.
+     * @return bool Whether the handler is enabled and verbosity is not set to quiet
      */
-    private function updateLevel()
+    private function updateLevel(): bool
     {
-        if (null === $this->output || OutputInterface::VERBOSITY_QUIET === $verbosity = $this->output->getVerbosity()) {
+        if (null === $this->output) {
             return false;
         }
 
+        $verbosity = $this->output->getVerbosity();
         if (isset($this->verbosityLevelMap[$verbosity])) {
             $this->setLevel($this->verbosityLevelMap[$verbosity]);
         } else {
-            $this->setLevel(Logger::DEBUG);
+            $this->setLevel(Level::Debug);
         }
 
         return true;

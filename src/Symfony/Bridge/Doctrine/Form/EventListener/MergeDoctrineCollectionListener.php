@@ -12,9 +12,9 @@
 namespace Symfony\Bridge\Doctrine\Form\EventListener;
 
 use Doctrine\Common\Collections\Collection;
-use Symfony\Component\Form\FormEvents;
-use Symfony\Component\Form\FormEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\Form\FormEvent;
+use Symfony\Component\Form\FormEvents;
 
 /**
  * Merge changes from the request to a Doctrine\Common\Collections\Collection instance.
@@ -23,25 +23,29 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
  *
- * @see    Doctrine\Common\Collections\Collection
+ * @see Collection
  */
 class MergeDoctrineCollectionListener implements EventSubscriberInterface
 {
-    public static function getSubscribedEvents()
+    public static function getSubscribedEvents(): array
     {
         // Higher priority than core MergeCollectionListener so that this one
         // is called before
-        return array(FormEvents::SUBMIT => array('onBind', 10));
+        return [
+            FormEvents::SUBMIT => [
+                ['onSubmit', 5],
+            ],
+        ];
     }
 
-    public function onBind(FormEvent $event)
+    public function onSubmit(FormEvent $event): void
     {
         $collection = $event->getForm()->getData();
         $data = $event->getData();
 
         // If all items were removed, call clear which has a higher
         // performance on persistent collections
-        if ($collection instanceof Collection && count($data) === 0) {
+        if ($collection instanceof Collection && 0 === \count($data)) {
             $collection->clear();
         }
     }

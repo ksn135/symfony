@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Serializer\Encoder;
 
+use Symfony\Component\Serializer\Debug\TraceableEncoder;
 use Symfony\Component\Serializer\Exception\RuntimeException;
 
 /**
@@ -19,33 +20,34 @@ use Symfony\Component\Serializer\Exception\RuntimeException;
  * @author Jordi Boggiano <j.boggiano@seld.be>
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
  * @author Lukas Kahwe Smith <smith@pooteeweet.org>
+ *
+ * @final
  */
-class ChainEncoder implements EncoderInterface
+class ChainEncoder implements ContextAwareEncoderInterface
 {
-    protected $encoders = array();
-    protected $encoderByFormat = array();
-
-    public function __construct(array $encoders = array())
-    {
-        $this->encoders = $encoders;
-    }
+    /**
+     * @var array<string, array-key>
+     */
+    private array $encoderByFormat = [];
 
     /**
-     * {@inheritdoc}
+     * @param array<EncoderInterface> $encoders
      */
-    final public function encode($data, $format, array $context = array())
-    {
-        return $this->getEncoder($format)->encode($data, $format, $context);
+    public function __construct(
+        private readonly array $encoders = [],
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function supportsEncoding($format)
+    final public function encode(mixed $data, string $format, array $context = []): string
+    {
+        return $this->getEncoder($format, $context)->encode($data, $format, $context);
+    }
+
+    public function supportsEncoding(string $format, array $context = []): bool
     {
         try {
-            $this->getEncoder($format);
-        } catch (RuntimeException $e) {
+            $this->getEncoder($format, $context);
+        } catch (RuntimeException) {
             return false;
         }
 
@@ -54,21 +56,21 @@ class ChainEncoder implements EncoderInterface
 
     /**
      * Checks whether the normalization is needed for the given format.
-     *
-     * @param string $format
-     *
-     * @return bool
      */
-    public function needsNormalization($format)
+    public function needsNormalization(string $format, array $context = []): bool
     {
-        $encoder = $this->getEncoder($format);
+        $encoder = $this->getEncoder($format, $context);
+
+        if ($encoder instanceof TraceableEncoder) {
+            return $encoder->needsNormalization();
+        }
 
         if (!$encoder instanceof NormalizationAwareInterface) {
             return true;
         }
 
         if ($encoder instanceof self) {
-            return $encoder->needsNormalization($format);
+            return $encoder->needsNormalization($format, $context);
         }
 
         return false;
@@ -77,13 +79,9 @@ class ChainEncoder implements EncoderInterface
     /**
      * Gets the encoder supporting the format.
      *
-     * @param string $format
-     *
-     * @return EncoderInterface
-     *
      * @throws RuntimeException if no encoder is found
      */
-    private function getEncoder($format)
+    private function getEncoder(string $format, array $context): EncoderInterface
     {
         if (isset($this->encoderByFormat[$format])
             && isset($this->encoders[$this->encoderByFormat[$format]])
@@ -91,9 +89,13 @@ class ChainEncoder implements EncoderInterface
             return $this->encoders[$this->encoderByFormat[$format]];
         }
 
+        $cache = true;
         foreach ($this->encoders as $i => $encoder) {
-            if ($encoder->supportsEncoding($format)) {
-                $this->encoderByFormat[$format] = $i;
+            $cache = $cache && !$encoder instanceof ContextAwareEncoderInterface;
+            if ($encoder->supportsEncoding($format, $context)) {
+                if ($cache) {
+                    $this->encoderByFormat[$format] = $i;
+                }
 
                 return $encoder;
             }

@@ -11,27 +11,37 @@
 
 namespace Symfony\Component\Security\Http;
 
+use Symfony\Component\Security\Http\Event\InteractiveLoginEvent;
+use Symfony\Component\Security\Http\Event\SwitchUserEvent;
+
 final class SecurityEvents
 {
     /**
-     * The INTERACTIVE_LOGIN event occurs after a user is logged in
-     * interactively for authentication based on http, cookies or X509.
+     * The INTERACTIVE_LOGIN event occurs after a user has actively logged
+     * into your website. It is important to distinguish this action from
+     * non-interactive authentication methods, such as:
+     *   - authentication based on your session.
+     *   - authentication using an HTTP basic or HTTP digest header.
      *
-     * The event listener method receives a
-     * Symfony\Component\Security\Http\Event\InteractiveLoginEvent instance.
-     *
-     * @var string
+     * @Event("Symfony\Component\Security\Http\Event\InteractiveLoginEvent")
      */
-    const INTERACTIVE_LOGIN = 'security.interactive_login';
+    public const INTERACTIVE_LOGIN = 'security.interactive_login';
 
     /**
      * The SWITCH_USER event occurs before switch to another user and
      * before exit from an already switched user.
      *
-     * The event listener method receives a
-     * Symfony\Component\Security\Http\Event\SwitchUserEvent instance.
-     *
-     * @var string
+     * @Event("Symfony\Component\Security\Http\Event\SwitchUserEvent")
      */
-    const SWITCH_USER = 'security.switch_user';
+    public const SWITCH_USER = 'security.switch_user';
+
+    /**
+     * Event aliases.
+     *
+     * These aliases can be consumed by RegisterListenersPass.
+     */
+    public const ALIASES = [
+        InteractiveLoginEvent::class => self::INTERACTIVE_LOGIN,
+        SwitchUserEvent::class => self::SWITCH_USER,
+    ];
 }

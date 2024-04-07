@@ -11,34 +11,48 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Command;
 
+use Psr\Container\ContainerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Helper\DescriptorHelper;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Completion\CompletionInput;
+use Symfony\Component\Console\Completion\CompletionSuggestions;
 use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Contracts\Service\ServiceProviderInterface;
 
 /**
- * A console command for retrieving information about event dispatcher
+ * A console command for retrieving information about event dispatcher.
  *
  * @author Matthieu Auger <mail@matthieuauger.com>
+ *
+ * @final
  */
-class EventDispatcherDebugCommand extends ContainerAwareCommand
+#[AsCommand(name: 'debug:event-dispatcher', description: 'Display configured listeners for an application')]
+class EventDispatcherDebugCommand extends Command
 {
-    /**
-     * {@inheritdoc}
-     */
-    protected function configure()
+    private const DEFAULT_DISPATCHER = 'event_dispatcher';
+
+    public function __construct(
+        private ContainerInterface $dispatchers,
+    ) {
+        parent::__construct();
+    }
+
+    protected function configure(): void
     {
         $this
-            ->setName('debug:event-dispatcher')
-            ->setDefinition(array(
-                new InputArgument('event', InputArgument::OPTIONAL, 'An event name (foo)'),
-                new InputOption('format', null, InputOption::VALUE_REQUIRED, 'To output description in other formats', 'txt'),
+            ->setDefinition([
+                new InputArgument('event', InputArgument::OPTIONAL, 'An event name or a part of the event name'),
+                new InputOption('dispatcher', null, InputOption::VALUE_REQUIRED, 'To view events of a specific event dispatcher', self::DEFAULT_DISPATCHER),
+                new InputOption('format', null, InputOption::VALUE_REQUIRED, sprintf('The output format ("%s")', implode('", "', $this->getAvailableFormatOptions())), 'txt'),
                 new InputOption('raw', null, InputOption::VALUE_NONE, 'To output raw description'),
-            ))
-            ->setDescription('Displays configured listeners for an application')
-            ->setHelp(<<<EOF
+            ])
+            ->setHelp(<<<'EOF'
 The <info>%command.name%</info> command displays all configured listeners:
 
   <info>php %command.full_name%</info>
@@ -52,33 +66,95 @@ EOF
     }
 
     /**
-     * {@inheritdoc}
-     *
      * @throws \LogicException
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($event = $input->getArgument('event')) {
-            $options = array('event' => $event);
-        } else {
-            $options = array();
+        $io = new SymfonyStyle($input, $output);
+
+        $options = [];
+        $dispatcherServiceName = $input->getOption('dispatcher');
+        if (!$this->dispatchers->has($dispatcherServiceName)) {
+            $io->getErrorStyle()->error(sprintf('Event dispatcher "%s" is not available.', $dispatcherServiceName));
+
+            return 1;
         }
 
-        $dispatcher = $this->getEventDispatcher();
+        $dispatcher = $this->dispatchers->get($dispatcherServiceName);
+
+        if ($event = $input->getArgument('event')) {
+            if ($dispatcher->hasListeners($event)) {
+                $options = ['event' => $event];
+            } else {
+                // if there is no direct match, try find partial matches
+                $events = $this->searchForEvent($dispatcher, $event);
+                if (0 === \count($events)) {
+                    $io->getErrorStyle()->warning(sprintf('The event "%s" does not have any registered listeners.', $event));
+
+                    return 0;
+                } elseif (1 === \count($events)) {
+                    $options = ['event' => $events[array_key_first($events)]];
+                } else {
+                    $options = ['events' => $events];
+                }
+            }
+        }
 
         $helper = new DescriptorHelper();
+
+        if (self::DEFAULT_DISPATCHER !== $dispatcherServiceName) {
+            $options['dispatcher_service_name'] = $dispatcherServiceName;
+        }
+
         $options['format'] = $input->getOption('format');
         $options['raw_text'] = $input->getOption('raw');
-        $helper->describe($output, $dispatcher, $options);
+        $options['output'] = $io;
+        $helper->describe($io, $dispatcher, $options);
+
+        return 0;
     }
 
-    /**
-     * Loads the Event Dispatcher from the container
-     *
-     * @return EventDispatcherInterface
-     */
-    protected function getEventDispatcher()
+    public function complete(CompletionInput $input, CompletionSuggestions $suggestions): void
     {
-        return $this->getContainer()->get('event_dispatcher');
+        if ($input->mustSuggestArgumentValuesFor('event')) {
+            $dispatcherServiceName = $input->getOption('dispatcher');
+            if ($this->dispatchers->has($dispatcherServiceName)) {
+                $dispatcher = $this->dispatchers->get($dispatcherServiceName);
+                $suggestions->suggestValues(array_keys($dispatcher->getListeners()));
+            }
+
+            return;
+        }
+
+        if ($input->mustSuggestOptionValuesFor('dispatcher')) {
+            if ($this->dispatchers instanceof ServiceProviderInterface) {
+                $suggestions->suggestValues(array_keys($this->dispatchers->getProvidedServices()));
+            }
+
+            return;
+        }
+
+        if ($input->mustSuggestOptionValuesFor('format')) {
+            $suggestions->suggestValues($this->getAvailableFormatOptions());
+        }
+    }
+
+    private function searchForEvent(EventDispatcherInterface $dispatcher, string $needle): array
+    {
+        $output = [];
+        $lcNeedle = strtolower($needle);
+        $allEvents = array_keys($dispatcher->getListeners());
+        foreach ($allEvents as $event) {
+            if (str_contains(strtolower($event), $lcNeedle)) {
+                $output[] = $event;
+            }
+        }
+
+        return $output;
+    }
+
+    private function getAvailableFormatOptions(): array
+    {
+        return (new DescriptorHelper())->getFormats();
     }
 }

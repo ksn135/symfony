@@ -11,154 +11,121 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\Controller;
 
+use Psr\Container\ContainerInterface as Psr11ContainerInterface;
 use Psr\Log\LoggerInterface;
-use Symfony\Bundle\FrameworkBundle\Controller\ControllerNameParser;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Bundle\FrameworkBundle\Controller\ControllerResolver;
-use Symfony\Component\DependencyInjection\ContainerAwareInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpKernel\Tests\Controller\ControllerResolverTest as BaseControllerResolverTest;
+use Symfony\Component\HttpKernel\Tests\Controller\ContainerControllerResolverTest;
 
-class ControllerResolverTest extends BaseControllerResolverTest
+class ControllerResolverTest extends ContainerControllerResolverTest
 {
-    public function testGetControllerOnContainerAware()
+    public function testAbstractControllerGetsContainerWhenNotSet()
     {
-        $resolver = $this->createControllerResolver();
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('"Symfony\\Bundle\\FrameworkBundle\\Tests\\Controller\\TestAbstractController" has no container set, did you forget to define it as a service subscriber?');
+
+        class_exists(AbstractControllerTest::class);
+
+        $controller = new TestAbstractController(false);
+
+        $container = new Container();
+        $container->set(TestAbstractController::class, $controller);
+
+        $resolver = $this->createControllerResolver(null, $container);
+
         $request = Request::create('/');
-        $request->attributes->set('_controller', 'Symfony\Bundle\FrameworkBundle\Tests\Controller\ContainerAwareController::testAction');
+        $request->attributes->set('_controller', TestAbstractController::class.'::fooAction');
 
-        $controller = $resolver->getController($request);
-
-        $this->assertInstanceOf('Symfony\Component\DependencyInjection\ContainerInterface', $controller[0]->getContainer());
-        $this->assertSame('testAction', $controller[1]);
+        $this->assertSame([$controller, 'fooAction'], $resolver->getController($request));
+        $this->assertSame($container, $controller->setContainer($container));
     }
 
-    public function testGetControllerWithBundleNotation()
+    public function testAbstractControllerServiceWithFqcnIdGetsContainerWhenNotSet()
     {
-        $shortName = 'FooBundle:Default:test';
-        $parser = $this->createMockParser();
-        $parser->expects($this->once())
-            ->method('parse')
-            ->with($shortName)
-            ->will($this->returnValue('Symfony\Bundle\FrameworkBundle\Tests\Controller\ContainerAwareController::testAction'))
-        ;
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('"Symfony\\Bundle\\FrameworkBundle\\Tests\\Controller\\DummyController" has no container set, did you forget to define it as a service subscriber?');
 
-        $resolver = $this->createControllerResolver(null, $parser);
+        class_exists(AbstractControllerTest::class);
+
+        $controller = new DummyController();
+
+        $container = new Container();
+        $container->set(DummyController::class, $controller);
+
+        $resolver = $this->createControllerResolver(null, $container);
+
         $request = Request::create('/');
-        $request->attributes->set('_controller', $shortName);
+        $request->attributes->set('_controller', DummyController::class.'::fooAction');
 
-        $controller = $resolver->getController($request);
-
-        $this->assertInstanceOf('Symfony\Bundle\FrameworkBundle\Tests\Controller\ContainerAwareController', $controller[0]);
-        $this->assertInstanceOf('Symfony\Component\DependencyInjection\ContainerInterface', $controller[0]->getContainer());
-        $this->assertSame('testAction', $controller[1]);
+        $this->assertSame([$controller, 'fooAction'], $resolver->getController($request));
+        $this->assertSame($container, $controller->getContainer());
     }
 
-    public function testGetControllerService()
+    public function testAbstractControllerGetsNoContainerWhenSet()
     {
-        $container = $this->createMockContainer();
-        $container->expects($this->once())
-            ->method('get')
-            ->with('foo')
-            ->will($this->returnValue($this))
-        ;
+        class_exists(AbstractControllerTest::class);
 
-        $resolver = $this->createControllerResolver(null, null, $container);
+        $controller = new TestAbstractController(false);
+        $controllerContainer = new Container();
+        $controller->setContainer($controllerContainer);
+
+        $container = new Container();
+        $container->set(TestAbstractController::class, $controller);
+
+        $resolver = $this->createControllerResolver(null, $container);
+
         $request = Request::create('/');
-        $request->attributes->set('_controller', 'foo:controllerMethod1');
+        $request->attributes->set('_controller', TestAbstractController::class.'::fooAction');
 
-        $controller = $resolver->getController($request);
-
-        $this->assertInstanceOf(get_class($this), $controller[0]);
-        $this->assertSame('controllerMethod1', $controller[1]);
+        $this->assertSame([$controller, 'fooAction'], $resolver->getController($request));
+        $this->assertSame($controllerContainer, $controller->setContainer($container));
     }
 
-    public function testGetControllerInvokableService()
+    public function testAbstractControllerServiceWithFcqnIdGetsNoContainerWhenSet()
     {
-        $container = $this->createMockContainer();
-        $container->expects($this->once())
-            ->method('has')
-            ->with('foo')
-            ->will($this->returnValue(true))
-        ;
-        $container->expects($this->once())
-            ->method('get')
-            ->with('foo')
-            ->will($this->returnValue($this))
-        ;
+        class_exists(AbstractControllerTest::class);
 
-        $resolver = $this->createControllerResolver(null, null, $container);
+        $controller = new DummyController();
+        $controllerContainer = new Container();
+        $controller->setContainer($controllerContainer);
+
+        $container = new Container();
+        $container->set(DummyController::class, $controller);
+
+        $resolver = $this->createControllerResolver(null, $container);
+
         $request = Request::create('/');
-        $request->attributes->set('_controller', 'foo');
+        $request->attributes->set('_controller', DummyController::class.'::fooAction');
 
-        $controller = $resolver->getController($request);
-
-        $this->assertInstanceOf(get_class($this), $controller);
+        $this->assertSame([$controller, 'fooAction'], $resolver->getController($request));
+        $this->assertSame($controllerContainer, $controller->getContainer());
     }
 
-    /**
-     * @dataProvider getUndefinedControllers
-     */
-    public function testGetControllerOnNonUndefinedFunction($controller, $exceptionName = null, $exceptionMessage = null)
+    protected function createControllerResolver(?LoggerInterface $logger = null, ?Psr11ContainerInterface $container = null)
     {
-        $this->setExpectedException($exceptionName, $exceptionMessage);
-
-        parent::testGetControllerOnNonUndefinedFunction($controller);
-    }
-
-    public function getUndefinedControllers()
-    {
-        return array(
-            array('foo', '\LogicException', 'Unable to parse the controller name "foo".'),
-            array('foo::bar', '\InvalidArgumentException', 'Class "foo" does not exist.'),
-            array('stdClass', '\LogicException', 'Unable to parse the controller name "stdClass".'),
-            array(
-                'Symfony\Component\HttpKernel\Tests\Controller\ControllerResolverTest::bar',
-                '\InvalidArgumentException',
-                'Controller "Symfony\Component\HttpKernel\Tests\Controller\ControllerResolverTest::bar" for URI "/" is not callable.',
-            ),
-        );
-    }
-
-    protected function createControllerResolver(LoggerInterface $logger = null, ControllerNameParser $parser = null, ContainerInterface $container = null)
-    {
-        if (!$parser) {
-            $parser = $this->createMockParser();
-        }
-
         if (!$container) {
-            $container = $this->createMockContainer();
+            $container = new Container();
         }
 
-        return new ControllerResolver($container, $parser, $logger);
+        return new ControllerResolver($container, $logger);
     }
 
     protected function createMockParser()
     {
-        return $this->getMock('Symfony\Bundle\FrameworkBundle\Controller\ControllerNameParser', array(), array(), '', false);
-    }
-
-    protected function createMockContainer()
-    {
-        return $this->getMock('Symfony\Component\DependencyInjection\ContainerInterface');
+        return $this->createMock(ControllerNameParser::class);
     }
 }
 
-class ContainerAwareController implements ContainerAwareInterface
+class DummyController extends AbstractController
 {
-    private $container;
-
-    public function setContainer(ContainerInterface $container = null)
-    {
-        $this->container = $container;
-    }
-
-    public function getContainer()
+    public function getContainer(): Psr11ContainerInterface
     {
         return $this->container;
     }
 
-    public function testAction()
+    public function fooAction()
     {
     }
 }

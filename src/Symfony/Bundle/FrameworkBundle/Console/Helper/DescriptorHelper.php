@@ -16,22 +16,22 @@ use Symfony\Bundle\FrameworkBundle\Console\Descriptor\MarkdownDescriptor;
 use Symfony\Bundle\FrameworkBundle\Console\Descriptor\TextDescriptor;
 use Symfony\Bundle\FrameworkBundle\Console\Descriptor\XmlDescriptor;
 use Symfony\Component\Console\Helper\DescriptorHelper as BaseDescriptorHelper;
+use Symfony\Component\ErrorHandler\ErrorRenderer\FileLinkFormatter;
 
 /**
  * @author Jean-François Simon <jeanfrancois.simon@sensiolabs.com>
+ *
+ * @internal
  */
 class DescriptorHelper extends BaseDescriptorHelper
 {
-    /**
-     * Constructor.
-     */
-    public function __construct()
+    public function __construct(?FileLinkFormatter $fileLinkFormatter = null)
     {
         $this
-            ->register('txt',  new TextDescriptor())
-            ->register('xml',  new XmlDescriptor())
+            ->register('txt', new TextDescriptor($fileLinkFormatter))
+            ->register('xml', new XmlDescriptor())
             ->register('json', new JsonDescriptor())
-            ->register('md',   new MarkdownDescriptor())
+            ->register('md', new MarkdownDescriptor())
         ;
     }
 }

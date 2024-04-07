@@ -64,99 +64,74 @@ namespace Symfony\Component\Form\Util;
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
  *
- * @since 2.2.6
+ * @template TValue
+ *
+ * @implements \ArrayAccess<string, TValue>
+ * @implements \IteratorAggregate<string, TValue>
  */
 class OrderedHashMap implements \ArrayAccess, \IteratorAggregate, \Countable
 {
     /**
-     * The elements of the map, indexed by their keys.
-     *
-     * @var array
-     */
-    private $elements = array();
-
-    /**
      * The keys of the map in the order in which they were inserted or changed.
      *
-     * @var array
+     * @var list<string>
      */
-    private $orderedKeys = array();
+    private array $orderedKeys = [];
 
     /**
      * References to the cursors of all open iterators.
      *
-     * @var array
+     * @var array<int, int>
      */
-    private $managedCursors = array();
+    private array $managedCursors = [];
 
     /**
      * Creates a new map.
      *
-     * @param array $elements The elements to insert initially.
-     *
-     * @since 2.2.6
+     * @param TValue[] $elements The initial elements of the map, indexed by their keys
      */
-    public function __construct(array $elements = array())
-    {
-        $this->elements = $elements;
-        $this->orderedKeys = array_keys($elements);
+    public function __construct(
+        private array $elements = [],
+    ) {
+        // the explicit string type-cast is necessary as digit-only keys would be returned as integers otherwise
+        $this->orderedKeys = array_map(strval(...), array_keys($elements));
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @since 2.2.6
-     */
-    public function offsetExists($key)
+    public function offsetExists(mixed $key): bool
     {
         return isset($this->elements[$key]);
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @since 2.2.6
-     */
-    public function offsetGet($key)
+    public function offsetGet(mixed $key): mixed
     {
         if (!isset($this->elements[$key])) {
-            throw new \OutOfBoundsException('The offset "'.$key.'" does not exist.');
+            throw new \OutOfBoundsException(sprintf('The offset "%s" does not exist.', $key));
         }
 
         return $this->elements[$key];
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @since 2.2.6
-     */
-    public function offsetSet($key, $value)
+    public function offsetSet(mixed $key, mixed $value): void
     {
         if (null === $key || !isset($this->elements[$key])) {
             if (null === $key) {
-                $key = array() === $this->orderedKeys
+                $key = [] === $this->orderedKeys
                     // If the array is empty, use 0 as key
                     ? 0
-                    // Imitate PHP's behavior of generating a key that equals
+                    // Imitate PHP behavior of generating a key that equals
                     // the highest existing integer key + 1
-                    : max($this->orderedKeys) + 1;
+                    : 1 + (int) max($this->orderedKeys);
             }
 
-            $this->orderedKeys[] = $key;
+            $this->orderedKeys[] = (string) $key;
         }
 
         $this->elements[$key] = $value;
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @since 2.2.6
-     */
-    public function offsetUnset($key)
+    public function offsetUnset(mixed $key): void
     {
-        if (false !== ($position = array_search($key, $this->orderedKeys))) {
+        if (false !== ($position = array_search((string) $key, $this->orderedKeys))) {
             array_splice($this->orderedKeys, $position, 1);
             unset($this->elements[$key]);
 
@@ -168,23 +143,13 @@ class OrderedHashMap implements \ArrayAccess, \IteratorAggregate, \Countable
         }
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @since 2.2.6
-     */
-    public function getIterator()
+    public function getIterator(): \Traversable
     {
         return new OrderedHashMapIterator($this->elements, $this->orderedKeys, $this->managedCursors);
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @since 2.2.6
-     */
-    public function count()
+    public function count(): int
     {
-        return count($this->elements);
+        return \count($this->elements);
     }
 }

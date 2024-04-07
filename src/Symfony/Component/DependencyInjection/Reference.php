@@ -15,58 +15,28 @@ namespace Symfony\Component\DependencyInjection;
  * Reference represents a service reference.
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 class Reference
 {
-    private $id;
-    private $invalidBehavior;
-    private $strict;
+    private string $id;
+    private int $invalidBehavior;
 
-    /**
-     * Constructor.
-     *
-     * @param string  $id              The service identifier
-     * @param int     $invalidBehavior The behavior when the service does not exist
-     * @param bool    $strict          Sets how this reference is validated
-     *
-     * @see Container
-     */
-    public function __construct($id, $invalidBehavior = ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE, $strict = true)
+    public function __construct(string $id, int $invalidBehavior = ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE)
     {
-        $this->id = strtolower($id);
+        $this->id = $id;
         $this->invalidBehavior = $invalidBehavior;
-        $this->strict = $strict;
     }
 
-    /**
-     * __toString.
-     *
-     * @return string The service identifier
-     */
-    public function __toString()
+    public function __toString(): string
     {
         return $this->id;
     }
 
     /**
      * Returns the behavior to be used when the service does not exist.
-     *
-     * @return int
      */
-    public function getInvalidBehavior()
+    public function getInvalidBehavior(): int
     {
         return $this->invalidBehavior;
-    }
-
-    /**
-     * Returns true when this Reference is strict
-     *
-     * @return bool
-     */
-    public function isStrict()
-    {
-        return $this->strict;
     }
 }

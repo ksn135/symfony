@@ -13,23 +13,23 @@ namespace Symfony\Component\CssSelector\Tests\Node;
 
 use Symfony\Component\CssSelector\Node\ElementNode;
 
-class ElementNodeTest extends AbstractNodeTest
+class ElementNodeTest extends AbstractNodeTestCase
 {
-    public function getToStringConversionTestData()
+    public static function getToStringConversionTestData()
     {
-        return array(
-            array(new ElementNode(), 'Element[*]'),
-            array(new ElementNode(null, 'element'), 'Element[element]'),
-            array(new ElementNode('namespace', 'element'), 'Element[namespace|element]'),
-        );
+        return [
+            [new ElementNode(), 'Element[*]'],
+            [new ElementNode(null, 'element'), 'Element[element]'],
+            [new ElementNode('namespace', 'element'), 'Element[namespace|element]'],
+        ];
     }
 
-    public function getSpecificityValueTestData()
+    public static function getSpecificityValueTestData()
     {
-        return array(
-            array(new ElementNode(), 0),
-            array(new ElementNode(null, 'element'), 1),
-            array(new ElementNode('namespace', 'element'),1),
-        );
+        return [
+            [new ElementNode(), 0],
+            [new ElementNode(null, 'element'), 1],
+            [new ElementNode('namespace', 'element'), 1],
+        ];
     }
 }

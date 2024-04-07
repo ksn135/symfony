@@ -16,42 +16,29 @@ use Symfony\Component\Security\Csrf\Exception\TokenNotFoundException;
 /**
  * Token storage that uses PHP's native session handling.
  *
- * @since  2.4
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class NativeSessionTokenStorage implements TokenStorageInterface
+class NativeSessionTokenStorage implements ClearableTokenStorageInterface
 {
     /**
      * The namespace used to store values in the session.
-     * @var string
      */
-    const SESSION_NAMESPACE = '_csrf';
+    public const SESSION_NAMESPACE = '_csrf';
 
-    /**
-     * @var bool
-     */
-    private $sessionStarted = false;
-
-    /**
-     * @var string
-     */
-    private $namespace;
+    private bool $sessionStarted = false;
+    private string $namespace;
 
     /**
      * Initializes the storage with a session namespace.
      *
-     * @param string  $namespace The namespace under which the token is stored
-     *                           in the session
+     * @param string $namespace The namespace under which the token is stored in the session
      */
-    public function __construct($namespace = self::SESSION_NAMESPACE)
+    public function __construct(string $namespace = self::SESSION_NAMESPACE)
     {
         $this->namespace = $namespace;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getToken($tokenId)
+    public function getToken(string $tokenId): string
     {
         if (!$this->sessionStarted) {
             $this->startSession();
@@ -64,22 +51,16 @@ class NativeSessionTokenStorage implements TokenStorageInterface
         return (string) $_SESSION[$this->namespace][$tokenId];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setToken($tokenId, $token)
+    public function setToken(string $tokenId, #[\SensitiveParameter] string $token): void
     {
         if (!$this->sessionStarted) {
             $this->startSession();
         }
 
-        $_SESSION[$this->namespace][$tokenId] = (string) $token;
+        $_SESSION[$this->namespace][$tokenId] = $token;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function hasToken($tokenId)
+    public function hasToken(string $tokenId): bool
     {
         if (!$this->sessionStarted) {
             $this->startSession();
@@ -88,31 +69,35 @@ class NativeSessionTokenStorage implements TokenStorageInterface
         return isset($_SESSION[$this->namespace][$tokenId]);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function removeToken($tokenId)
+    public function removeToken(string $tokenId): ?string
     {
         if (!$this->sessionStarted) {
             $this->startSession();
         }
 
-        $token = isset($_SESSION[$this->namespace][$tokenId])
-            ? (string) $_SESSION[$this->namespace][$tokenId]
-            : null;
+        if (!isset($_SESSION[$this->namespace][$tokenId])) {
+            return null;
+        }
+
+        $token = (string) $_SESSION[$this->namespace][$tokenId];
 
         unset($_SESSION[$this->namespace][$tokenId]);
+
+        if (!$_SESSION[$this->namespace]) {
+            unset($_SESSION[$this->namespace]);
+        }
 
         return $token;
     }
 
-    private function startSession()
+    public function clear(): void
     {
-        if (version_compare(PHP_VERSION, '5.4', '>=')) {
-            if (PHP_SESSION_NONE === session_status()) {
-                session_start();
-            }
-        } elseif (!session_id()) {
+        unset($_SESSION[$this->namespace]);
+    }
+
+    private function startSession(): void
+    {
+        if (\PHP_SESSION_NONE === session_status()) {
             session_start();
         }
 

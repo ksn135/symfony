@@ -12,40 +12,38 @@
 namespace Symfony\Bridge\Twig\Extension;
 
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Twig\Extension\AbstractExtension;
+use Twig\Node\Expression\ArrayExpression;
+use Twig\Node\Expression\ConstantExpression;
+use Twig\Node\Node;
+use Twig\TwigFunction;
 
 /**
  * Provides integration of the Routing component with Twig.
  *
  * @author Fabien Potencier <fabien@symfony.com>
  */
-class RoutingExtension extends \Twig_Extension
+final class RoutingExtension extends AbstractExtension
 {
-    private $generator;
-
-    public function __construct(UrlGeneratorInterface $generator)
-    {
-        $this->generator = $generator;
+    public function __construct(
+        private UrlGeneratorInterface $generator,
+    ) {
     }
 
-    /**
-     * Returns a list of functions to add to the existing list.
-     *
-     * @return array An array of functions
-     */
-    public function getFunctions()
+    public function getFunctions(): array
     {
-        return array(
-            new \Twig_SimpleFunction('url', array($this, 'getUrl'), array('is_safe_callback' => array($this, 'isUrlGenerationSafe'))),
-            new \Twig_SimpleFunction('path', array($this, 'getPath'), array('is_safe_callback' => array($this, 'isUrlGenerationSafe'))),
-        );
+        return [
+            new TwigFunction('url', $this->getUrl(...), ['is_safe_callback' => $this->isUrlGenerationSafe(...)]),
+            new TwigFunction('path', $this->getPath(...), ['is_safe_callback' => $this->isUrlGenerationSafe(...)]),
+        ];
     }
 
-    public function getPath($name, $parameters = array(), $relative = false)
+    public function getPath(string $name, array $parameters = [], bool $relative = false): string
     {
         return $this->generator->generate($name, $parameters, $relative ? UrlGeneratorInterface::RELATIVE_PATH : UrlGeneratorInterface::ABSOLUTE_PATH);
     }
 
-    public function getUrl($name, $parameters = array(), $schemeRelative = false)
+    public function getUrl(string $name, array $parameters = [], bool $schemeRelative = false): string
     {
         return $this->generator->generate($name, $parameters, $schemeRelative ? UrlGeneratorInterface::NETWORK_PATH : UrlGeneratorInterface::ABSOLUTE_URL);
     }
@@ -55,7 +53,7 @@ class RoutingExtension extends \Twig_Extension
      * saving the unneeded automatic escaping for performance reasons.
      *
      * The URL generation process percent encodes non-alphanumeric characters. So there is no risk
-     * that malicious/invalid characters are part of the URL. The only character within an URL that
+     * that malicious/invalid characters are part of the URL. The only character within a URL that
      * must be escaped in html is the ampersand ("&") which separates query params. So we cannot mark
      * the URL generation as always safe, but only when we are sure there won't be multiple query
      * params. This is the case when there are none or only one constant parameter given.
@@ -68,33 +66,23 @@ class RoutingExtension extends \Twig_Extension
      * - path('route', {'param1': 'value1', 'param2': 'value2'})
      * If param1 and param2 reference placeholder in the route, it would still be safe. But we don't know.
      *
-     * @param \Twig_Node $argsNode The arguments of the path/url function
+     * @param Node $argsNode The arguments of the path/url function
      *
      * @return array An array with the contexts the URL is safe
      */
-    public function isUrlGenerationSafe(\Twig_Node $argsNode)
+    public function isUrlGenerationSafe(Node $argsNode): array
     {
         // support named arguments
         $paramsNode = $argsNode->hasNode('parameters') ? $argsNode->getNode('parameters') : (
             $argsNode->hasNode(1) ? $argsNode->getNode(1) : null
         );
 
-        if (null === $paramsNode || $paramsNode instanceof \Twig_Node_Expression_Array && count($paramsNode) <= 2 &&
-            (!$paramsNode->hasNode(1) || $paramsNode->getNode(1) instanceof \Twig_Node_Expression_Constant)
+        if (null === $paramsNode || $paramsNode instanceof ArrayExpression && \count($paramsNode) <= 2
+            && (!$paramsNode->hasNode(1) || $paramsNode->getNode(1) instanceof ConstantExpression)
         ) {
-            return array('html');
+            return ['html'];
         }
 
-        return array();
-    }
-
-    /**
-     * Returns the name of the extension.
-     *
-     * @return string The extension name
-     */
-    public function getName()
-    {
-        return 'routing';
+        return [];
     }
 }

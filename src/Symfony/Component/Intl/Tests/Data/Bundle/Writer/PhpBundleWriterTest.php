@@ -11,63 +11,56 @@
 
 namespace Symfony\Component\Intl\Tests\Data\Bundle\Writer;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Intl\Data\Bundle\Writer\PhpBundleWriter;
-use Symfony\Component\Intl\Util\IntlTestHelper;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class PhpBundleWriterTest extends \PHPUnit_Framework_TestCase
+class PhpBundleWriterTest extends TestCase
 {
-    /**
-     * @var PhpBundleWriter
-     */
-    private $writer;
+    private PhpBundleWriter $writer;
+    private string $directory;
+    private Filesystem $filesystem;
 
-    private $directory;
-
-    /**
-     * @var Filesystem
-     */
-    private $filesystem;
-
-    protected function setUp()
+    protected function setUp(): void
     {
         $this->writer = new PhpBundleWriter();
-        $this->directory = sys_get_temp_dir().'/PhpBundleWriterTest/'.rand(1000, 9999);
+        $this->directory = sys_get_temp_dir().'/PhpBundleWriterTest/'.mt_rand(1000, 9999);
         $this->filesystem = new Filesystem();
 
         $this->filesystem->mkdir($this->directory);
     }
 
-    protected function tearDown()
+    protected function tearDown(): void
     {
         $this->filesystem->remove($this->directory);
     }
 
     public function testWrite()
     {
-        $this->writer->write($this->directory, 'en', array(
-            'Entry1' => array(
-                'Array' => array('foo', 'bar'),
+        $this->writer->write($this->directory, 'en', [
+            'Entry1' => [
+                'Array' => ['foo', 'bar'],
                 'Integer' => 5,
                 'Boolean' => false,
                 'Float' => 1.23,
-            ),
+            ],
             'Entry2' => 'String',
-            'Traversable' => new \ArrayIterator(array(
+            'Traversable' => new \ArrayIterator([
                 'Foo' => 'Bar',
-            )),
-        ));
+            ]),
+        ]);
 
         $this->assertFileEquals(__DIR__.'/Fixtures/en.php', $this->directory.'/en.php');
     }
 
+    /**
+     * @requires extension intl
+     */
     public function testWriteResourceBundle()
     {
-        IntlTestHelper::requireFullIntl($this);
-
         $bundle = new \ResourceBundle('rb', __DIR__.'/Fixtures', false);
 
         $this->writer->write($this->directory, 'en', $bundle);

@@ -27,7 +27,6 @@ namespace Symfony\Component\Validator\Mapping;
  * Although the constants currently represent a boolean switch, they are
  * implemented as bit mask in order to allow future extensions.
  *
- * @since  2.5
  * @author Bernhard Schussek <bschussek@gmail.com>
  *
  * @see TraversalStrategy
@@ -37,12 +36,12 @@ class CascadingStrategy
     /**
      * Specifies that a node should not be cascaded.
      */
-    const NONE = 1;
+    public const NONE = 1;
 
     /**
      * Specifies that a node should be cascaded.
      */
-    const CASCADE = 2;
+    public const CASCADE = 2;
 
     /**
      * Not instantiable.

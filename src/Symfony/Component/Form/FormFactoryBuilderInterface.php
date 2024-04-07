@@ -21,88 +21,76 @@ interface FormFactoryBuilderInterface
     /**
      * Sets the factory for creating ResolvedFormTypeInterface instances.
      *
-     * @param ResolvedFormTypeFactoryInterface $resolvedTypeFactory
-     *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function setResolvedTypeFactory(ResolvedFormTypeFactoryInterface $resolvedTypeFactory);
+    public function setResolvedTypeFactory(ResolvedFormTypeFactoryInterface $resolvedTypeFactory): static;
 
     /**
      * Adds an extension to be loaded by the factory.
      *
-     * @param FormExtensionInterface $extension The extension.
-     *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addExtension(FormExtensionInterface $extension);
+    public function addExtension(FormExtensionInterface $extension): static;
 
     /**
      * Adds a list of extensions to be loaded by the factory.
      *
-     * @param FormExtensionInterface[] $extensions The extensions.
+     * @param FormExtensionInterface[] $extensions The extensions
      *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addExtensions(array $extensions);
+    public function addExtensions(array $extensions): static;
 
     /**
      * Adds a form type to the factory.
      *
-     * @param FormTypeInterface $type The form type.
-     *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addType(FormTypeInterface $type);
+    public function addType(FormTypeInterface $type): static;
 
     /**
      * Adds a list of form types to the factory.
      *
-     * @param FormTypeInterface[] $types The form types.
+     * @param FormTypeInterface[] $types The form types
      *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addTypes(array $types);
+    public function addTypes(array $types): static;
 
     /**
      * Adds a form type extension to the factory.
      *
-     * @param FormTypeExtensionInterface $typeExtension The form type extension.
-     *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addTypeExtension(FormTypeExtensionInterface $typeExtension);
+    public function addTypeExtension(FormTypeExtensionInterface $typeExtension): static;
 
     /**
      * Adds a list of form type extensions to the factory.
      *
-     * @param FormTypeExtensionInterface[] $typeExtensions The form type extensions.
+     * @param FormTypeExtensionInterface[] $typeExtensions The form type extensions
      *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addTypeExtensions(array $typeExtensions);
+    public function addTypeExtensions(array $typeExtensions): static;
 
     /**
      * Adds a type guesser to the factory.
      *
-     * @param FormTypeGuesserInterface $typeGuesser The type guesser.
-     *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addTypeGuesser(FormTypeGuesserInterface $typeGuesser);
+    public function addTypeGuesser(FormTypeGuesserInterface $typeGuesser): static;
 
     /**
      * Adds a list of type guessers to the factory.
      *
-     * @param FormTypeGuesserInterface[] $typeGuessers The type guessers.
+     * @param FormTypeGuesserInterface[] $typeGuessers The type guessers
      *
-     * @return FormFactoryBuilderInterface The builder.
+     * @return $this
      */
-    public function addTypeGuessers(array $typeGuessers);
+    public function addTypeGuessers(array $typeGuessers): static;
 
     /**
      * Builds and returns the factory.
-     *
-     * @return FormFactoryInterface The form factory.
      */
-    public function getFormFactory();
+    public function getFormFactory(): FormFactoryInterface;
 }

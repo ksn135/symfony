@@ -11,85 +11,116 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\DependencyInjection\Compiler;
 
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Definition;
+use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\DataCollector\AbstractDataCollector;
+use Symfony\Bundle\FrameworkBundle\DataCollector\TemplateAwareDataCollectorInterface;
 use Symfony\Bundle\FrameworkBundle\DependencyInjection\Compiler\ProfilerPass;
+use Symfony\Component\DependencyInjection\Compiler\ResolveChildDefinitionsPass;
+use Symfony\Component\DependencyInjection\Compiler\ResolveInstanceofConditionalsPass;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\DataCollector\DataCollectorInterface;
 
-class ProfilerPassTest extends \PHPUnit_Framework_TestCase
+class ProfilerPassTest extends TestCase
 {
-    private $profilerDefinition;
-
-    protected function setUp()
-    {
-        $this->profilerDefinition = new Definition('ProfilerClass');
-    }
-
     /**
      * Tests that collectors that specify a template but no "id" will throw
-     * an exception (both are needed if the template is specified). Thus,
-     * a fully-valid tag looks something like this:
+     * an exception (both are needed if the template is specified).
+     *
+     * Thus, a fully-valid tag looks something like this:
      *
      *     <tag name="data_collector" template="YourBundle:Collector:templatename" id="your_collector_name" />
      */
     public function testTemplateNoIdThrowsException()
     {
-        // one service, with a template key, but no id
-        $services = array(
-            'my_collector_service' => array(0 => array('template' => 'foo')),
-        );
-
-        $builder = $this->createContainerMock($services);
-
-        $this->setExpectedException('InvalidArgumentException');
+        $builder = new ContainerBuilder();
+        $builder->register('profiler', 'ProfilerClass');
+        $builder->register('my_collector_service')
+            ->addTag('data_collector', ['template' => 'foo']);
 
         $profilerPass = new ProfilerPass();
+
+        $this->expectException(\InvalidArgumentException::class);
+
         $profilerPass->process($builder);
     }
 
     public function testValidCollector()
     {
-        // one service, with a template key, but no id
-        $services = array(
-            'my_collector_service' => array(0 => array('template' => 'foo', 'id' => 'my_collector')),
-        );
-
-        $container = $this->createContainerMock($services);
-
-        // fake the getDefinition() to return a Profiler definition
-        $container->expects($this->atLeastOnce())
-            ->method('getDefinition');
-
-        // assert that the data_collector.templates parameter should be set
-        $container->expects($this->once())
-            ->method('setParameter')
-            ->with('data_collector.templates', array('my_collector_service' => array('my_collector', 'foo')));
+        $container = new ContainerBuilder();
+        $profilerDefinition = $container->register('profiler', 'ProfilerClass');
+        $container->register('my_collector_service')
+            ->addTag('data_collector', ['template' => 'foo', 'id' => 'my_collector']);
 
         $profilerPass = new ProfilerPass();
         $profilerPass->process($container);
 
+        $this->assertSame(['my_collector_service' => ['my_collector', 'foo']], $container->getParameter('data_collector.templates'));
+
         // grab the method calls off of the "profiler" definition
-        $methodCalls = $this->profilerDefinition->getMethodCalls();
+        $methodCalls = $profilerDefinition->getMethodCalls();
         $this->assertCount(1, $methodCalls);
         $this->assertEquals('add', $methodCalls[0][0]); // grab the method part of the first call
     }
 
-    private function createContainerMock($services)
+    public static function provideValidCollectorWithTemplateUsingAutoconfigure(): \Generator
     {
-        $container = $this->getMock(
-            'Symfony\Component\DependencyInjection\ContainerBuilder',
-            array('hasDefinition', 'getDefinition', 'findTaggedServiceIds', 'setParameter')
-        );
-        $container->expects($this->any())
-            ->method('hasDefinition')
-            ->with($this->equalTo('profiler'))
-            ->will($this->returnValue(true));
-        $container->expects($this->any())
-            ->method('getDefinition')
-            ->will($this->returnValue($this->profilerDefinition));
-        $container->expects($this->atLeastOnce())
-            ->method('findTaggedServiceIds')
-            ->will($this->returnValue($services));
+        yield [new class() implements TemplateAwareDataCollectorInterface {
+            public function collect(Request $request, Response $response, ?\Throwable $exception = null): void
+            {
+            }
 
-        return $container;
+            public function getName(): string
+            {
+                return static::class;
+            }
+
+            public function reset(): void
+            {
+            }
+
+            public static function getTemplate(): string
+            {
+                return 'foo';
+            }
+        }];
+
+        yield [new class() extends AbstractDataCollector {
+            public function collect(Request $request, Response $response, ?\Throwable $exception = null): void
+            {
+            }
+
+            public static function getTemplate(): string
+            {
+                return 'foo';
+            }
+        }];
+    }
+
+    /**
+     * @dataProvider provideValidCollectorWithTemplateUsingAutoconfigure
+     */
+    public function testValidCollectorWithTemplateUsingAutoconfigure(TemplateAwareDataCollectorInterface $dataCollector)
+    {
+        $container = new ContainerBuilder();
+        $profilerDefinition = $container->register('profiler', 'ProfilerClass');
+
+        $container->registerForAutoconfiguration(DataCollectorInterface::class)->addTag('data_collector');
+        $container->register('mydatacollector', $dataCollector::class)->setAutoconfigured(true);
+
+        (new ResolveInstanceofConditionalsPass())->process($container);
+        (new ProfilerPass())->process($container);
+
+        $idForTemplate = $dataCollector::class;
+        $this->assertSame(['mydatacollector' => [$idForTemplate, 'foo']], $container->getParameter('data_collector.templates'));
+
+        // grab the method calls off of the "profiler" definition
+        $methodCalls = $profilerDefinition->getMethodCalls();
+        $this->assertCount(1, $methodCalls);
+        $this->assertEquals('add', $methodCalls[0][0]); // grab the method part of the first call
+
+        (new ResolveChildDefinitionsPass())->process($container);
+        $this->assertSame($idForTemplate, $container->get('mydatacollector')->getName());
     }
 }

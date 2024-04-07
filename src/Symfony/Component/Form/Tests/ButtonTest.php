@@ -11,22 +11,30 @@
 
 namespace Symfony\Component\Form\Tests;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Form\ButtonBuilder;
+use Symfony\Component\Form\Exception\AlreadySubmittedException;
 use Symfony\Component\Form\FormBuilder;
+use Symfony\Component\Form\FormFactory;
+use Symfony\Component\Form\FormRegistry;
+use Symfony\Component\Form\ResolvedFormTypeFactory;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class ButtonTest extends \PHPUnit_Framework_TestCase
+class ButtonTest extends TestCase
 {
-    private $dispatcher;
-
-    private $factory;
-
-    protected function setUp()
+    public function testSetParentOnSubmittedButton()
     {
-        $this->dispatcher = $this->getMock('Symfony\Component\EventDispatcher\EventDispatcherInterface');
-        $this->factory = $this->getMock('Symfony\Component\Form\FormFactoryInterface');
+        $this->expectException(AlreadySubmittedException::class);
+        $button = $this->getButtonBuilder('button')
+            ->getForm()
+        ;
+
+        $button->submit('');
+
+        $button->setParent($this->getFormBuilder()->getForm());
     }
 
     /**
@@ -34,28 +42,30 @@ class ButtonTest extends \PHPUnit_Framework_TestCase
      */
     public function testDisabledIfParentIsDisabled($parentDisabled, $buttonDisabled, $result)
     {
-        $form = $this->getFormBuilder('form')
+        $form = $this->getFormBuilder()
             ->setDisabled($parentDisabled)
-            ->getForm();
+            ->getForm()
+        ;
 
         $button = $this->getButtonBuilder('button')
             ->setDisabled($buttonDisabled)
-            ->getForm();
+            ->getForm()
+        ;
 
         $button->setParent($form);
 
         $this->assertSame($result, $button->isDisabled());
     }
 
-    public function getDisabledStates()
+    public static function getDisabledStates()
     {
-        return array(
+        return [
             // parent, button, result
-            array(true, true, true),
-            array(true, false, true),
-            array(false, true, true),
-            array(false, false, false),
-        );
+            [true, true, true],
+            [true, false, true],
+            [false, true, true],
+            [false, false, false],
+        ];
     }
 
     private function getButtonBuilder($name)
@@ -63,8 +73,8 @@ class ButtonTest extends \PHPUnit_Framework_TestCase
         return new ButtonBuilder($name);
     }
 
-    private function getFormBuilder($name)
+    private function getFormBuilder()
     {
-        return new FormBuilder($name, null, $this->dispatcher, $this->factory);
+        return new FormBuilder('form', null, new EventDispatcher(), new FormFactory(new FormRegistry([], new ResolvedFormTypeFactory())));
     }
 }

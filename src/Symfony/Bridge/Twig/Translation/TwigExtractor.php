@@ -11,9 +11,14 @@
 
 namespace Symfony\Bridge\Twig\Translation;
 
+use Symfony\Bridge\Twig\Extension\TranslationExtension;
 use Symfony\Component\Finder\Finder;
+use Symfony\Component\Translation\Extractor\AbstractFileExtractor;
 use Symfony\Component\Translation\Extractor\ExtractorInterface;
 use Symfony\Component\Translation\MessageCatalogue;
+use Twig\Environment;
+use Twig\Error\Error;
+use Twig\Source;
 
 /**
  * TwigExtractor extracts translation messages from a twig template.
@@ -21,72 +26,62 @@ use Symfony\Component\Translation\MessageCatalogue;
  * @author Michel Salib <michelsalib@hotmail.com>
  * @author Fabien Potencier <fabien@symfony.com>
  */
-class TwigExtractor implements ExtractorInterface
+class TwigExtractor extends AbstractFileExtractor implements ExtractorInterface
 {
     /**
      * Default domain for found messages.
-     *
-     * @var string
      */
-    private $defaultDomain = 'messages';
+    private string $defaultDomain = 'messages';
 
     /**
      * Prefix for found message.
-     *
-     * @var string
      */
-    private $prefix = '';
+    private string $prefix = '';
 
-    /**
-     * The twig environment.
-     *
-     * @var \Twig_Environment
-     */
-    private $twig;
-
-    public function __construct(\Twig_Environment $twig)
-    {
-        $this->twig = $twig;
+    public function __construct(
+        private Environment $twig,
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function extract($directory, MessageCatalogue $catalogue)
+    public function extract($resource, MessageCatalogue $catalogue): void
     {
-        // load any existing translation files
-        $finder = new Finder();
-        $files = $finder->files()->name('*.twig')->sortByName()->in($directory);
-        foreach ($files as $file) {
+        foreach ($this->extractFiles($resource) as $file) {
             try {
                 $this->extractTemplate(file_get_contents($file->getPathname()), $catalogue);
-            } catch (\Twig_Error $e) {
-                $e->setTemplateFile($file->getRelativePathname());
-
-                throw $e;
+            } catch (Error) {
+                // ignore errors, these should be fixed by using the linter
             }
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setPrefix($prefix)
+    public function setPrefix(string $prefix): void
     {
         $this->prefix = $prefix;
     }
 
-    protected function extractTemplate($template, MessageCatalogue $catalogue)
+    protected function extractTemplate(string $template, MessageCatalogue $catalogue): void
     {
-        $visitor = $this->twig->getExtension('translator')->getTranslationNodeVisitor();
+        $visitor = $this->twig->getExtension(TranslationExtension::class)->getTranslationNodeVisitor();
         $visitor->enable();
 
-        $this->twig->parse($this->twig->tokenize($template));
+        $this->twig->parse($this->twig->tokenize(new Source($template, '')));
 
         foreach ($visitor->getMessages() as $message) {
-            $catalogue->set(trim($message[0]), $this->prefix.trim($message[0]), $message[1] ? $message[1] : $this->defaultDomain);
+            $catalogue->set(trim($message[0]), $this->prefix.trim($message[0]), $message[1] ?: $this->defaultDomain);
         }
 
         $visitor->disable();
+    }
+
+    protected function canBeExtracted(string $file): bool
+    {
+        return $this->isFile($file) && 'twig' === pathinfo($file, \PATHINFO_EXTENSION);
+    }
+
+    protected function extractFromDirectory($directory): iterable
+    {
+        $finder = new Finder();
+
+        return $finder->files()->name('*.twig')->in($directory);
     }
 }

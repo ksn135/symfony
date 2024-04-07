@@ -11,68 +11,69 @@
 
 namespace Symfony\Bridge\Doctrine\Tests\Form\Type;
 
-use Symfony\Bridge\Doctrine\Test\DoctrineTestHelper;
-use Symfony\Component\Form\Exception\UnexpectedTypeException;
-use Symfony\Component\Form\Test\TypeTestCase;
-use Symfony\Bridge\Doctrine\Tests\Fixtures\GroupableEntity;
-use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity;
-use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringIdEntity;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityRepository;
+use Doctrine\ORM\Tools\SchemaTool;
+use Doctrine\Persistence\ManagerRegistry;
+use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Bridge\Doctrine\Form\DoctrineOrmExtension;
+use Symfony\Bridge\Doctrine\Form\DoctrineOrmTypeGuesser;
+use Symfony\Bridge\Doctrine\Form\Type\EntityType;
+use Symfony\Bridge\Doctrine\Tests\DoctrineTestHelper;
 use Symfony\Bridge\Doctrine\Tests\Fixtures\CompositeIntIdEntity;
 use Symfony\Bridge\Doctrine\Tests\Fixtures\CompositeStringIdEntity;
-use Symfony\Bridge\Doctrine\Form\DoctrineOrmExtension;
-use Doctrine\ORM\Tools\SchemaTool;
-use Doctrine\Common\Collections\ArrayCollection;
-use Symfony\Component\Form\Extension\Core\View\ChoiceView;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\GroupableEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleAssociationToIntIdEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdNoToStringEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringCastableIdEntity;
+use Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringIdEntity;
+use Symfony\Component\Form\ChoiceList\LazyChoiceList;
+use Symfony\Component\Form\ChoiceList\View\ChoiceGroupView;
+use Symfony\Component\Form\ChoiceList\View\ChoiceView;
+use Symfony\Component\Form\Exception\RuntimeException;
+use Symfony\Component\Form\Exception\UnexpectedTypeException;
+use Symfony\Component\Form\Forms;
+use Symfony\Component\Form\Tests\Extension\Core\Type\BaseTypeTestCase;
+use Symfony\Component\Form\Tests\Extension\Core\Type\FormTypeTest;
+use Symfony\Component\OptionsResolver\Exception\InvalidOptionsException;
+use Symfony\Component\OptionsResolver\Exception\MissingOptionsException;
 
-class EntityTypeTest extends TypeTestCase
+class EntityTypeTest extends BaseTypeTestCase
 {
-    const ITEM_GROUP_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\GroupableEntity';
-    const SINGLE_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity';
-    const SINGLE_STRING_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringIdEntity';
-    const COMPOSITE_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\CompositeIntIdEntity';
-    const COMPOSITE_STRING_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\CompositeStringIdEntity';
+    public const TESTED_TYPE = 'Symfony\Bridge\Doctrine\Form\Type\EntityType';
 
-    /**
-     * @var \Doctrine\ORM\EntityManager
-     */
-    private $em;
+    private const ITEM_GROUP_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\GroupableEntity';
+    private const SINGLE_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity';
+    private const SINGLE_IDENT_NO_TO_STRING_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdNoToStringEntity';
+    private const SINGLE_STRING_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringIdEntity';
+    private const SINGLE_ASSOC_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleAssociationToIntIdEntity';
+    private const SINGLE_STRING_CASTABLE_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\SingleStringCastableIdEntity';
+    private const COMPOSITE_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\CompositeIntIdEntity';
+    private const COMPOSITE_STRING_IDENT_CLASS = 'Symfony\Bridge\Doctrine\Tests\Fixtures\CompositeStringIdEntity';
 
-    /**
-     * @var \PHPUnit_Framework_MockObject_MockObject
-     */
-    private $emRegistry;
+    private EntityManager $em;
+    private MockObject&ManagerRegistry $emRegistry;
 
-    protected function setUp()
+    protected function setUp(): void
     {
-        if (!class_exists('Symfony\Component\Form\Form')) {
-            $this->markTestSkipped('The "Form" component is not available');
-        }
-
-        if (!class_exists('Doctrine\DBAL\Platforms\MySqlPlatform')) {
-            $this->markTestSkipped('Doctrine DBAL is not available.');
-        }
-
-        if (!class_exists('Doctrine\Common\Version')) {
-            $this->markTestSkipped('Doctrine Common is not available.');
-        }
-
-        if (!class_exists('Doctrine\ORM\EntityManager')) {
-            $this->markTestSkipped('Doctrine ORM is not available.');
-        }
-
         $this->em = DoctrineTestHelper::createTestEntityManager();
         $this->emRegistry = $this->createRegistryMock('default', $this->em);
 
         parent::setUp();
 
         $schemaTool = new SchemaTool($this->em);
-        $classes = array(
+        $classes = [
             $this->em->getClassMetadata(self::ITEM_GROUP_CLASS),
             $this->em->getClassMetadata(self::SINGLE_IDENT_CLASS),
+            $this->em->getClassMetadata(self::SINGLE_IDENT_NO_TO_STRING_CLASS),
             $this->em->getClassMetadata(self::SINGLE_STRING_IDENT_CLASS),
+            $this->em->getClassMetadata(self::SINGLE_ASSOC_IDENT_CLASS),
+            $this->em->getClassMetadata(self::SINGLE_STRING_CASTABLE_IDENT_CLASS),
             $this->em->getClassMetadata(self::COMPOSITE_IDENT_CLASS),
             $this->em->getClassMetadata(self::COMPOSITE_STRING_IDENT_CLASS),
-        );
+        ];
 
         try {
             $schemaTool->dropSchema($classes);
@@ -85,19 +86,11 @@ class EntityTypeTest extends TypeTestCase
         }
     }
 
-    protected function tearDown()
-    {
-        parent::tearDown();
-
-        $this->em = null;
-        $this->emRegistry = null;
-    }
-
     protected function getExtensions()
     {
-        return array_merge(parent::getExtensions(), array(
+        return array_merge(parent::getExtensions(), [
             new DoctrineOrmExtension($this->emRegistry),
-        ));
+        ]);
     }
 
     protected function persist(array $entities)
@@ -111,22 +104,51 @@ class EntityTypeTest extends TypeTestCase
         // be managed!
     }
 
-    /**
-     * @expectedException \Symfony\Component\OptionsResolver\Exception\MissingOptionsException
-     */
     public function testClassOptionIsRequired()
     {
-        $this->factory->createNamed('name', 'entity');
+        $this->expectException(MissingOptionsException::class);
+        $this->factory->createNamed('name', static::TESTED_TYPE);
+    }
+
+    public function testInvalidClassOption()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'class' => 'foo',
+        ]);
     }
 
     /**
-     * @expectedException Symfony\Component\Form\Exception\RuntimeException
+     * @dataProvider choiceTranslationDomainProvider
      */
-    public function testInvalidClassOption()
+    public function testChoiceTranslationDomainIsDisabledByDefault($expanded)
     {
-        $this->factory->createNamed('name', 'entity', null, array(
-            'class' => 'foo',
-        ));
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+
+        $this->persist([$entity1]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'choices' => [
+                $entity1,
+            ],
+            'class' => SingleIntIdEntity::class,
+            'em' => 'default',
+            'expanded' => $expanded,
+        ]);
+
+        if ($expanded) {
+            $this->assertFalse($field->get('1')->getConfig()->getOption('translation_domain'));
+        } else {
+            $this->assertFalse($field->getConfig()->getOption('choice_translation_domain'));
+        }
+    }
+
+    public static function choiceTranslationDomainProvider(): array
+    {
+        return [
+            [false],
+            [true],
+        ];
     }
 
     public function testSetDataToUninitializedEntityWithNonRequired()
@@ -134,16 +156,16 @@ class EntityTypeTest extends TypeTestCase
         $entity1 = new SingleIntIdEntity(1, 'Foo');
         $entity2 = new SingleIntIdEntity(2, 'Bar');
 
-        $this->persist(array($entity1, $entity2));
+        $this->persist([$entity1, $entity2]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             'required' => false,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
-        $this->assertEquals(array(1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')), $field->createView()->vars['choices']);
+        $this->assertEquals([1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')], $field->createView()->vars['choices']);
     }
 
     public function testSetDataToUninitializedEntityWithNonRequiredToString()
@@ -151,15 +173,16 @@ class EntityTypeTest extends TypeTestCase
         $entity1 = new SingleIntIdEntity(1, 'Foo');
         $entity2 = new SingleIntIdEntity(2, 'Bar');
 
-        $this->persist(array($entity1, $entity2));
+        $this->persist([$entity1, $entity2]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $view = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             'required' => false,
-        ));
+        ])
+            ->createView();
 
-        $this->assertEquals(array(1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')), $field->createView()->vars['choices']);
+        $this->assertEquals([1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')], $view->vars['choices']);
     }
 
     public function testSetDataToUninitializedEntityWithNonRequiredQueryBuilder()
@@ -167,55 +190,66 @@ class EntityTypeTest extends TypeTestCase
         $entity1 = new SingleIntIdEntity(1, 'Foo');
         $entity2 = new SingleIntIdEntity(2, 'Bar');
 
-        $this->persist(array($entity1, $entity2));
+        $this->persist([$entity1, $entity2]);
         $qb = $this->em->createQueryBuilder()->select('e')->from(self::SINGLE_IDENT_CLASS, 'e');
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $view = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             'required' => false,
-            'property' => 'name',
+            'choice_label' => 'name',
             'query_builder' => $qb,
-        ));
+        ])
+            ->createView();
 
-        $this->assertEquals(array(1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')), $field->createView()->vars['choices']);
+        $this->assertEquals([1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')], $view->vars['choices']);
     }
 
-    /**
-     * @expectedException \Symfony\Component\Form\Exception\UnexpectedTypeException
-     */
     public function testConfigureQueryBuilderWithNonQueryBuilderAndNonClosure()
     {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $this->expectException(InvalidOptionsException::class);
+        $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             'query_builder' => new \stdClass(),
-        ));
+        ]);
     }
 
-    /**
-     * @expectedException \Symfony\Component\Form\Exception\UnexpectedTypeException
-     */
     public function testConfigureQueryBuilderWithClosureReturningNonQueryBuilder()
     {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $this->expectException(UnexpectedTypeException::class);
+        $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => fn () => new \stdClass(),
+        ]);
+    }
+
+    public function testConfigureQueryBuilderWithClosureReturningNullUseDefault()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             'query_builder' => function () {
-                return new \stdClass();
+                return;
             },
-        ));
+        ]);
 
-        $field->submit('2');
+        $this->assertEquals([1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')], $field->createView()->vars['choices']);
     }
 
     public function testSetDataSingleNull()
     {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => false,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-        ));
+        ]);
         $field->setData(null);
 
         $this->assertNull($field->getData());
@@ -224,71 +258,30 @@ class EntityTypeTest extends TypeTestCase
 
     public function testSetDataMultipleExpandedNull()
     {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => true,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-        ));
+        ]);
         $field->setData(null);
 
         $this->assertNull($field->getData());
-        $this->assertSame(array(), $field->getViewData());
+        $this->assertSame([], $field->getViewData());
     }
 
     public function testSetDataMultipleNonExpandedNull()
     {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => false,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-        ));
+        ]);
         $field->setData(null);
 
         $this->assertNull($field->getData());
-        $this->assertSame(array(), $field->getViewData());
-    }
-
-    public function testSubmitSingleExpandedNull()
-    {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
-            'multiple' => false,
-            'expanded' => true,
-            'em' => 'default',
-            'class' => self::SINGLE_IDENT_CLASS,
-        ));
-        $field->submit(null);
-
-        $this->assertNull($field->getData());
-        $this->assertSame(array(), $field->getViewData());
-    }
-
-    public function testSubmitSingleNonExpandedNull()
-    {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
-            'multiple' => false,
-            'expanded' => false,
-            'em' => 'default',
-            'class' => self::SINGLE_IDENT_CLASS,
-        ));
-        $field->submit(null);
-
-        $this->assertNull($field->getData());
-        $this->assertSame('', $field->getViewData());
-    }
-
-    public function testSubmitMultipleNull()
-    {
-        $field = $this->factory->createNamed('name', 'entity', null, array(
-            'multiple' => true,
-            'em' => 'default',
-            'class' => self::SINGLE_IDENT_CLASS,
-        ));
-        $field->submit(null);
-
-        $this->assertEquals(new ArrayCollection(), $field->getData());
-        $this->assertSame(array(), $field->getViewData());
+        $this->assertSame([], $field->getViewData());
     }
 
     public function testSubmitSingleNonExpandedSingleIdentifier()
@@ -296,15 +289,40 @@ class EntityTypeTest extends TypeTestCase
         $entity1 = new SingleIntIdEntity(1, 'Foo');
         $entity2 = new SingleIntIdEntity(2, 'Bar');
 
-        $this->persist(array($entity1, $entity2));
+        $this->persist([$entity1, $entity2]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => false,
             'expanded' => false,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('2');
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertSame($entity2, $field->getData());
+        $this->assertSame('2', $field->getViewData());
+    }
+
+    public function testSubmitSingleNonExpandedSingleAssocIdentifier()
+    {
+        $innerEntity1 = new SingleIntIdNoToStringEntity(1, 'InFoo');
+        $innerEntity2 = new SingleIntIdNoToStringEntity(2, 'InBar');
+
+        $entity1 = new SingleAssociationToIntIdEntity($innerEntity1, 'Foo');
+        $entity2 = new SingleAssociationToIntIdEntity($innerEntity2, 'Bar');
+
+        $this->persist([$innerEntity1, $innerEntity2, $entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => false,
+            'expanded' => false,
+            'em' => 'default',
+            'class' => self::SINGLE_ASSOC_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('2');
 
@@ -318,15 +336,15 @@ class EntityTypeTest extends TypeTestCase
         $entity1 = new CompositeIntIdEntity(10, 20, 'Foo');
         $entity2 = new CompositeIntIdEntity(30, 40, 'Bar');
 
-        $this->persist(array($entity1, $entity2));
+        $this->persist([$entity1, $entity2]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => false,
             'expanded' => false,
             'em' => 'default',
             'class' => self::COMPOSITE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
         // the collection key is used here
         $field->submit('1');
@@ -342,23 +360,52 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => false,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
-        $field->submit(array('1', '3'));
+        $field->submit(['1', '3']);
 
-        $expected = new ArrayCollection(array($entity1, $entity3));
+        $expected = new ArrayCollection([$entity1, $entity3]);
 
         $this->assertTrue($field->isSynchronized());
         $this->assertEquals($expected, $field->getData());
-        $this->assertSame(array('1', '3'), $field->getViewData());
+        $this->assertSame(['1', '3'], $field->getViewData());
+    }
+
+    public function testSubmitMultipleNonExpandedSingleAssocIdentifier()
+    {
+        $innerEntity1 = new SingleIntIdNoToStringEntity(1, 'InFoo');
+        $innerEntity2 = new SingleIntIdNoToStringEntity(2, 'InBar');
+        $innerEntity3 = new SingleIntIdNoToStringEntity(3, 'InBaz');
+
+        $entity1 = new SingleAssociationToIntIdEntity($innerEntity1, 'Foo');
+        $entity2 = new SingleAssociationToIntIdEntity($innerEntity2, 'Bar');
+        $entity3 = new SingleAssociationToIntIdEntity($innerEntity3, 'Baz');
+
+        $this->persist([$innerEntity1, $innerEntity2, $innerEntity3, $entity1, $entity2, $entity3]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => true,
+            'expanded' => false,
+            'em' => 'default',
+            'class' => self::SINGLE_ASSOC_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit(['1', '3']);
+
+        $expected = new ArrayCollection([$entity1, $entity3]);
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertEquals($expected, $field->getData());
+        $this->assertSame(['1', '3'], $field->getViewData());
     }
 
     public function testSubmitMultipleNonExpandedSingleIdentifierForExistingData()
@@ -367,29 +414,29 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => false,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
-        $existing = new ArrayCollection(array(0 => $entity2));
+        $existing = new ArrayCollection([0 => $entity2]);
 
         $field->setData($existing);
-        $field->submit(array('1', '3'));
+        $field->submit(['1', '3']);
 
         // entry with index 0 ($entity2) was replaced
-        $expected = new ArrayCollection(array(0 => $entity1, 1 => $entity3));
+        $expected = new ArrayCollection([0 => $entity1, 1 => $entity3]);
 
         $this->assertTrue($field->isSynchronized());
         $this->assertEquals($expected, $field->getData());
         // same object still, useful if it is a PersistentCollection
         $this->assertSame($existing, $field->getData());
-        $this->assertSame(array('1', '3'), $field->getViewData());
+        $this->assertSame(['1', '3'], $field->getViewData());
     }
 
     public function testSubmitMultipleNonExpandedCompositeIdentifier()
@@ -398,24 +445,24 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new CompositeIntIdEntity(30, 40, 'Bar');
         $entity3 = new CompositeIntIdEntity(50, 60, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => false,
             'em' => 'default',
             'class' => self::COMPOSITE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
         // because of the composite key collection keys are used
-        $field->submit(array('0', '2'));
+        $field->submit(['0', '2']);
 
-        $expected = new ArrayCollection(array($entity1, $entity3));
+        $expected = new ArrayCollection([$entity1, $entity3]);
 
         $this->assertTrue($field->isSynchronized());
         $this->assertEquals($expected, $field->getData());
-        $this->assertSame(array('0', '2'), $field->getViewData());
+        $this->assertSame(['0', '2'], $field->getViewData());
     }
 
     public function testSubmitMultipleNonExpandedCompositeIdentifierExistingData()
@@ -424,29 +471,29 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new CompositeIntIdEntity(30, 40, 'Bar');
         $entity3 = new CompositeIntIdEntity(50, 60, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => false,
             'em' => 'default',
             'class' => self::COMPOSITE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
-        $existing = new ArrayCollection(array(0 => $entity2));
+        $existing = new ArrayCollection([0 => $entity2]);
 
         $field->setData($existing);
-        $field->submit(array('0', '2'));
+        $field->submit(['0', '2']);
 
         // entry with index 0 ($entity2) was replaced
-        $expected = new ArrayCollection(array(0 => $entity1, 1 => $entity3));
+        $expected = new ArrayCollection([0 => $entity1, 1 => $entity3]);
 
         $this->assertTrue($field->isSynchronized());
         $this->assertEquals($expected, $field->getData());
         // same object still, useful if it is a PersistentCollection
         $this->assertSame($existing, $field->getData());
-        $this->assertSame(array('0', '2'), $field->getViewData());
+        $this->assertSame(['0', '2'], $field->getViewData());
     }
 
     public function testSubmitSingleExpanded()
@@ -454,15 +501,15 @@ class EntityTypeTest extends TypeTestCase
         $entity1 = new SingleIntIdEntity(1, 'Foo');
         $entity2 = new SingleIntIdEntity(2, 'Bar');
 
-        $this->persist(array($entity1, $entity2));
+        $this->persist([$entity1, $entity2]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => false,
             'expanded' => true,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('2');
 
@@ -480,19 +527,19 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Bar');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => true,
             'expanded' => true,
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
-        $field->submit(array('1', '3'));
+        $field->submit(['1', '3']);
 
-        $expected = new ArrayCollection(array($entity1, $entity3));
+        $expected = new ArrayCollection([$entity1, $entity3]);
 
         $this->assertTrue($field->isSynchronized());
         $this->assertEquals($expected, $field->getData());
@@ -504,28 +551,263 @@ class EntityTypeTest extends TypeTestCase
         $this->assertSame('3', $field['3']->getViewData());
     }
 
+    public function testSubmitMultipleExpandedWithNegativeIntegerId()
+    {
+        $entity1 = new SingleIntIdEntity(-1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => true,
+            'expanded' => true,
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit(['-1']);
+
+        $expected = new ArrayCollection([$entity1]);
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertEquals($expected, $field->getData());
+        $this->assertTrue($field['_1']->getData());
+        $this->assertFalse($field['2']->getData());
+    }
+
+    public function testSubmitSingleNonExpandedStringCastableIdentifier()
+    {
+        $entity1 = new SingleStringCastableIdEntity(1, 'Foo');
+        $entity2 = new SingleStringCastableIdEntity(2, 'Bar');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => false,
+            'expanded' => false,
+            'em' => 'default',
+            'class' => self::SINGLE_STRING_CASTABLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('2');
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertSame($entity2, $field->getData());
+        $this->assertSame('2', $field->getViewData());
+    }
+
+    public function testSubmitSingleStringCastableIdentifierExpanded()
+    {
+        $entity1 = new SingleStringCastableIdEntity(1, 'Foo');
+        $entity2 = new SingleStringCastableIdEntity(2, 'Bar');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => false,
+            'expanded' => true,
+            'em' => 'default',
+            'class' => self::SINGLE_STRING_CASTABLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('2');
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertSame($entity2, $field->getData());
+        $this->assertFalse($field['0']->getData());
+        $this->assertTrue($field['1']->getData());
+        $this->assertNull($field['0']->getViewData());
+        $this->assertSame('2', $field['1']->getViewData());
+    }
+
+    public function testSubmitMultipleNonExpandedStringCastableIdentifierForExistingData()
+    {
+        $entity1 = new SingleStringCastableIdEntity(1, 'Foo');
+        $entity2 = new SingleStringCastableIdEntity(2, 'Bar');
+        $entity3 = new SingleStringCastableIdEntity(3, 'Baz');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => true,
+            'expanded' => false,
+            'em' => 'default',
+            'class' => self::SINGLE_STRING_CASTABLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $existing = new ArrayCollection([0 => $entity2]);
+
+        $field->setData($existing);
+        $field->submit(['1', '3']);
+
+        // entry with index 0 ($entity2) was replaced
+        $expected = new ArrayCollection([0 => $entity1, 1 => $entity3]);
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertEquals($expected, $field->getData());
+        // same object still, useful if it is a PersistentCollection
+        $this->assertSame($existing, $field->getData());
+        $this->assertSame(['1', '3'], $field->getViewData());
+    }
+
+    public function testSubmitMultipleNonExpandedStringCastableIdentifier()
+    {
+        $entity1 = new SingleStringCastableIdEntity(1, 'Foo');
+        $entity2 = new SingleStringCastableIdEntity(2, 'Bar');
+        $entity3 = new SingleStringCastableIdEntity(3, 'Baz');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => true,
+            'expanded' => false,
+            'em' => 'default',
+            'class' => self::SINGLE_STRING_CASTABLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit(['1', '3']);
+
+        $expected = new ArrayCollection([$entity1, $entity3]);
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertEquals($expected, $field->getData());
+        $this->assertSame(['1', '3'], $field->getViewData());
+    }
+
+    public function testSubmitMultipleStringCastableIdentifierExpanded()
+    {
+        $entity1 = new SingleStringCastableIdEntity(1, 'Foo');
+        $entity2 = new SingleStringCastableIdEntity(2, 'Bar');
+        $entity3 = new SingleStringCastableIdEntity(3, 'Bar');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'multiple' => true,
+            'expanded' => true,
+            'em' => 'default',
+            'class' => self::SINGLE_STRING_CASTABLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit(['1', '3']);
+
+        $expected = new ArrayCollection([$entity1, $entity3]);
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertEquals($expected, $field->getData());
+        $this->assertTrue($field['0']->getData());
+        $this->assertFalse($field['1']->getData());
+        $this->assertTrue($field['2']->getData());
+        $this->assertSame('1', $field['0']->getViewData());
+        $this->assertNull($field['1']->getViewData());
+        $this->assertSame('3', $field['2']->getViewData());
+    }
+
     public function testOverrideChoices()
     {
         $entity1 = new SingleIntIdEntity(1, 'Foo');
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             // not all persisted entities should be displayed
-            'choices' => array($entity1, $entity2),
-            'property' => 'name',
-        ));
+            'choices' => [$entity1, $entity2],
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('2');
 
-        $this->assertEquals(array(1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')), $field->createView()->vars['choices']);
+        $this->assertEquals([1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar')], $field->createView()->vars['choices']);
         $this->assertTrue($field->isSynchronized());
         $this->assertSame($entity2, $field->getData());
         $this->assertSame('2', $field->getViewData());
+    }
+
+    public function testOverrideChoicesValues()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'choice_label' => 'name',
+            'choice_value' => 'name',
+        ]);
+
+        $field->submit('Bar');
+
+        $this->assertEquals(['Foo' => new ChoiceView($entity1, 'Foo', 'Foo'), 'Bar' => new ChoiceView($entity2, 'Bar', 'Bar')], $field->createView()->vars['choices']);
+        $this->assertTrue($field->isSynchronized(), 'Field should be synchronized.');
+        $this->assertSame($entity2, $field->getData(), 'Entity should be loaded by custom value.');
+        $this->assertSame('Bar', $field->getViewData());
+    }
+
+    public function testOverrideChoicesValuesWithCallable()
+    {
+        $entity1 = new GroupableEntity(1, 'Foo', 'BazGroup');
+        $entity2 = new GroupableEntity(2, 'Bar', 'BooGroup');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::ITEM_GROUP_CLASS,
+            'choice_label' => 'name',
+            'choice_value' => function (?GroupableEntity $entity = null) {
+                if (null === $entity) {
+                    return '';
+                }
+
+                return $entity->groupName.'/'.$entity->name;
+            },
+        ]);
+
+        $field->submit('BooGroup/Bar');
+
+        $this->assertEquals([
+            'BazGroup/Foo' => new ChoiceView($entity1, 'BazGroup/Foo', 'Foo'),
+            'BooGroup/Bar' => new ChoiceView($entity2, 'BooGroup/Bar', 'Bar'),
+            ], $field->createView()->vars['choices']);
+        $this->assertTrue($field->isSynchronized(), 'Field should be synchronized.');
+        $this->assertSame($entity2, $field->getData(), 'Entity should be loaded by custom value.');
+        $this->assertSame('BooGroup/Bar', $field->getViewData());
+    }
+
+    public function testChoicesForValuesOptimization()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+
+        $this->persist([$entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'choice_label' => 'name',
+        ]);
+
+        $this->em->clear();
+
+        $field->submit(1);
+
+        $unitOfWorkIdentityMap = $this->em->getUnitOfWork()->getIdentityMap();
+        $managedEntitiesNames = array_map('strval', $unitOfWorkIdentityMap['Symfony\Bridge\Doctrine\Tests\Fixtures\SingleIntIdEntity']);
+
+        $this->assertContains((string) $entity1, $managedEntitiesNames);
+        $this->assertNotContains((string) $entity2, $managedEntitiesNames);
     }
 
     public function testGroupByChoices()
@@ -535,24 +817,29 @@ class EntityTypeTest extends TypeTestCase
         $item3 = new GroupableEntity(3, 'Baz', 'Group2');
         $item4 = new GroupableEntity(4, 'Boo!', null);
 
-        $this->persist(array($item1, $item2, $item3, $item4));
+        $this->persist([$item1, $item2, $item3, $item4]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::ITEM_GROUP_CLASS,
-            'choices' => array($item1, $item2, $item3, $item4),
-            'property' => 'name',
+            'choices' => [$item1, $item2, $item3, $item4],
+            'choice_label' => 'name',
             'group_by' => 'groupName',
-        ));
+        ]);
 
         $field->submit('2');
 
         $this->assertSame('2', $field->getViewData());
-        $this->assertEquals(array(
-            'Group1' => array(1 => new ChoiceView($item1, '1', 'Foo'), 2 => new ChoiceView($item2, '2', 'Bar')),
-            'Group2' => array(3 => new ChoiceView($item3, '3', 'Baz')),
-            '4' => new ChoiceView($item4, '4', 'Boo!'),
-        ), $field->createView()->vars['choices']);
+        $this->assertEquals([
+            'Group1' => new ChoiceGroupView('Group1', [
+                1 => new ChoiceView($item1, '1', 'Foo'),
+                2 => new ChoiceView($item2, '2', 'Bar'),
+            ]),
+            'Group2' => new ChoiceGroupView('Group2', [
+                3 => new ChoiceView($item3, '3', 'Baz'),
+            ]),
+            4 => new ChoiceView($item4, '4', 'Boo!'),
+        ], $field->createView()->vars['choices']);
     }
 
     public function testPreferredChoices()
@@ -561,17 +848,17 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'preferred_choices' => array($entity3, $entity2),
-            'property' => 'name',
-        ));
+            'preferred_choices' => [$entity3, $entity2],
+            'choice_label' => 'name',
+        ]);
 
-        $this->assertEquals(array(3 => new ChoiceView($entity3, '3', 'Baz'), 2 => new ChoiceView($entity2, '2', 'Bar')), $field->createView()->vars['preferred_choices']);
-        $this->assertEquals(array(1 => new ChoiceView($entity1, '1', 'Foo')), $field->createView()->vars['choices']);
+        $this->assertEquals([3 => new ChoiceView($entity3, '3', 'Baz'), 2 => new ChoiceView($entity2, '2', 'Bar')], $field->createView()->vars['preferred_choices']);
+        $this->assertEquals([1 => new ChoiceView($entity1, '1', 'Foo'), 2 => new ChoiceView($entity2, '2', 'Bar'), 3 => new ChoiceView($entity3, '3', 'Baz')], $field->createView()->vars['choices']);
     }
 
     public function testOverrideChoicesWithPreferredChoices()
@@ -580,18 +867,18 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'choices' => array($entity2, $entity3),
-            'preferred_choices' => array($entity3),
-            'property' => 'name',
-        ));
+            'choices' => [$entity2, $entity3],
+            'preferred_choices' => [$entity3],
+            'choice_label' => 'name',
+        ]);
 
-        $this->assertEquals(array(3 => new ChoiceView($entity3, '3', 'Baz')), $field->createView()->vars['preferred_choices']);
-        $this->assertEquals(array(2 => new ChoiceView($entity2, '2', 'Bar')), $field->createView()->vars['choices']);
+        $this->assertEquals([3 => new ChoiceView($entity3, '3', 'Baz')], $field->createView()->vars['preferred_choices']);
+        $this->assertEquals([2 => new ChoiceView($entity2, '2', 'Bar'), 3 => new ChoiceView($entity3, '3', 'Baz')], $field->createView()->vars['choices']);
     }
 
     public function testDisallowChoicesThatAreNotIncludedChoicesSingleIdentifier()
@@ -600,14 +887,37 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'choices' => array($entity1, $entity2),
-            'property' => 'name',
-        ));
+            'choices' => [$entity1, $entity2],
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('3');
+
+        $this->assertFalse($field->isSynchronized());
+        $this->assertNull($field->getData());
+    }
+
+    public function testDisallowChoicesThatAreNotIncludedChoicesSingleAssocIdentifier()
+    {
+        $innerEntity1 = new SingleIntIdNoToStringEntity(1, 'InFoo');
+        $innerEntity2 = new SingleIntIdNoToStringEntity(2, 'InBar');
+
+        $entity1 = new SingleAssociationToIntIdEntity($innerEntity1, 'Foo');
+        $entity2 = new SingleAssociationToIntIdEntity($innerEntity2, 'Bar');
+
+        $this->persist([$innerEntity1, $innerEntity2, $entity1, $entity2]);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_ASSOC_IDENT_CLASS,
+            'choices' => [$entity1, $entity2],
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('3');
 
@@ -621,14 +931,14 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new CompositeIntIdEntity(30, 40, 'Bar');
         $entity3 = new CompositeIntIdEntity(50, 60, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::COMPOSITE_IDENT_CLASS,
-            'choices' => array($entity1, $entity2),
-            'property' => 'name',
-        ));
+            'choices' => [$entity1, $entity2],
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('2');
 
@@ -642,17 +952,95 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
         $repository = $this->em->getRepository(self::SINGLE_IDENT_CLASS);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
             'query_builder' => $repository->createQueryBuilder('e')
                 ->where('e.id IN (1, 2)'),
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('3');
+
+        $this->assertFalse($field->isSynchronized());
+        $this->assertNull($field->getData());
+    }
+
+    public function testSingleIdentifierWithLimit()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+        $entity3 = new SingleIntIdEntity(3, 'Baz');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $repository = $this->em->getRepository(self::SINGLE_IDENT_CLASS);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => $repository->createQueryBuilder('e')
+                ->where('e.id IN (1, 2, 3)')
+                ->setMaxResults(1),
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('1');
+
+        $this->assertTrue($field->isSynchronized());
+        $this->assertSame($entity1, $field->getData());
+    }
+
+    public function testDisallowChoicesThatAreNotIncludedByQueryBuilderSingleIdentifierWithLimit()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+        $entity3 = new SingleIntIdEntity(3, 'Baz');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $repository = $this->em->getRepository(self::SINGLE_IDENT_CLASS);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => $repository->createQueryBuilder('e')
+                ->where('e.id IN (1, 2, 3)')
+                ->setMaxResults(1),
+            'choice_label' => 'name',
+        ]);
+
+        $field->submit('3');
+
+        $this->assertFalse($field->isSynchronized());
+        $this->assertNull($field->getData());
+    }
+
+    public function testDisallowChoicesThatAreNotIncludedQueryBuilderSingleAssocIdentifier()
+    {
+        $innerEntity1 = new SingleIntIdNoToStringEntity(1, 'InFoo');
+        $innerEntity2 = new SingleIntIdNoToStringEntity(2, 'InBar');
+        $innerEntity3 = new SingleIntIdNoToStringEntity(3, 'InBaz');
+
+        $entity1 = new SingleAssociationToIntIdEntity($innerEntity1, 'Foo');
+        $entity2 = new SingleAssociationToIntIdEntity($innerEntity2, 'Bar');
+        $entity3 = new SingleAssociationToIntIdEntity($innerEntity3, 'Baz');
+
+        $this->persist([$innerEntity1, $innerEntity2, $innerEntity3, $entity1, $entity2, $entity3]);
+
+        $repository = $this->em->getRepository(self::SINGLE_ASSOC_IDENT_CLASS);
+
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_ASSOC_IDENT_CLASS,
+            'query_builder' => $repository->createQueryBuilder('e')
+                ->where('e.entity IN (1, 2)'),
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('3');
 
@@ -666,17 +1054,15 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new SingleIntIdEntity(2, 'Bar');
         $entity3 = new SingleIntIdEntity(3, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::SINGLE_IDENT_CLASS,
-            'query_builder' => function ($repository) {
-                return $repository->createQueryBuilder('e')
-                        ->where('e.id IN (1, 2)');
-            },
-            'property' => 'name',
-        ));
+            'query_builder' => fn (EntityRepository $repository) => $repository->createQueryBuilder('e')
+                ->where('e.id IN (1, 2)'),
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('3');
 
@@ -690,17 +1076,15 @@ class EntityTypeTest extends TypeTestCase
         $entity2 = new CompositeIntIdEntity(30, 40, 'Bar');
         $entity3 = new CompositeIntIdEntity(50, 60, 'Baz');
 
-        $this->persist(array($entity1, $entity2, $entity3));
+        $this->persist([$entity1, $entity2, $entity3]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => 'default',
             'class' => self::COMPOSITE_IDENT_CLASS,
-            'query_builder' => function ($repository) {
-                return $repository->createQueryBuilder('e')
-                        ->where('e.id1 IN (10, 50)');
-            },
-            'property' => 'name',
-        ));
+            'query_builder' => fn (EntityRepository $repository) => $repository->createQueryBuilder('e')
+                ->where('e.id1 IN (10, 50)'),
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('2');
 
@@ -712,15 +1096,15 @@ class EntityTypeTest extends TypeTestCase
     {
         $entity1 = new SingleStringIdEntity('foo', 'Foo');
 
-        $this->persist(array($entity1));
+        $this->persist([$entity1]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => false,
             'expanded' => false,
             'em' => 'default',
             'class' => self::SINGLE_STRING_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
         $field->submit('foo');
 
@@ -733,15 +1117,15 @@ class EntityTypeTest extends TypeTestCase
     {
         $entity1 = new CompositeStringIdEntity('foo1', 'foo2', 'Foo');
 
-        $this->persist(array($entity1));
+        $this->persist([$entity1]);
 
-        $field = $this->factory->createNamed('name', 'entity', null, array(
+        $field = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'multiple' => false,
             'expanded' => false,
             'em' => 'default',
             'class' => self::COMPOSITE_STRING_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
 
         // the collection key is used here
         $field->submit('0');
@@ -759,13 +1143,13 @@ class EntityTypeTest extends TypeTestCase
         $this->emRegistry->expects($this->once())
             ->method('getManagerForClass')
             ->with(self::SINGLE_IDENT_CLASS)
-            ->will($this->returnValue($this->em));
+            ->willReturn($this->em);
 
-        $this->factory->createNamed('name', 'entity', null, array(
+        $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'class' => self::SINGLE_IDENT_CLASS,
             'required' => false,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
     }
 
     public function testExplicitEm()
@@ -776,21 +1160,602 @@ class EntityTypeTest extends TypeTestCase
         $this->emRegistry->expects($this->never())
             ->method('getManagerForClass');
 
-        $this->factory->createNamed('name', 'entity', null, array(
+        $this->factory->createNamed('name', static::TESTED_TYPE, null, [
             'em' => $this->em,
             'class' => self::SINGLE_IDENT_CLASS,
-            'property' => 'name',
-        ));
+            'choice_label' => 'name',
+        ]);
     }
 
-    protected function createRegistryMock($name, $em)
+    public function testLoaderCaching()
     {
-        $registry = $this->getMock('Doctrine\Common\Persistence\ManagerRegistry');
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+        $entity3 = new SingleIntIdEntity(3, 'Baz');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $repo = $this->em->getRepository(self::SINGLE_IDENT_CLASS);
+
+        $entityType = new EntityType($this->emRegistry);
+
+        $entityTypeGuesser = new DoctrineOrmTypeGuesser($this->emRegistry);
+
+        $factory = Forms::createFormFactoryBuilder()
+            ->addType($entityType)
+            ->addTypeGuesser($entityTypeGuesser)
+            ->getFormFactory();
+
+        $formBuilder = $factory->createNamedBuilder('form', FormTypeTest::TESTED_TYPE);
+
+        $formBuilder->add('property1', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => $repo->createQueryBuilder('e')->where('e.id IN (1, 2)'),
+        ]);
+
+        $formBuilder->add('property2', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => fn (EntityRepository $repo) => $repo->createQueryBuilder('e')->where('e.id IN (1, 2)'),
+        ]);
+
+        $formBuilder->add('property3', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => fn (EntityRepository $repo) => $repo->createQueryBuilder('e')->where('e.id IN (1, 2)'),
+        ]);
+
+        $form = $formBuilder->getForm();
+
+        $form->submit([
+            'property1' => 1,
+            'property2' => 1,
+            'property3' => 2,
+        ]);
+
+        $choiceList1 = $form->get('property1')->getConfig()->getAttribute('choice_list');
+        $choiceList2 = $form->get('property2')->getConfig()->getAttribute('choice_list');
+        $choiceList3 = $form->get('property3')->getConfig()->getAttribute('choice_list');
+
+        $this->assertInstanceOf(LazyChoiceList::class, $choiceList1);
+        $this->assertSame($choiceList1, $choiceList2);
+        $this->assertSame($choiceList1, $choiceList3);
+    }
+
+    public function testLoaderCachingWithParameters()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+        $entity3 = new SingleIntIdEntity(3, 'Baz');
+
+        $this->persist([$entity1, $entity2, $entity3]);
+
+        $repo = $this->em->getRepository(self::SINGLE_IDENT_CLASS);
+
+        $entityType = new EntityType($this->emRegistry);
+
+        $entityTypeGuesser = new DoctrineOrmTypeGuesser($this->emRegistry);
+
+        $factory = Forms::createFormFactoryBuilder()
+            ->addType($entityType)
+            ->addTypeGuesser($entityTypeGuesser)
+            ->getFormFactory();
+
+        $formBuilder = $factory->createNamedBuilder('form', FormTypeTest::TESTED_TYPE);
+
+        $formBuilder->add('property1', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => $repo->createQueryBuilder('e')->where('e.id = :id')->setParameter('id', 1),
+        ]);
+
+        $formBuilder->add('property2', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => fn (EntityRepository $repo) => $repo->createQueryBuilder('e')->where('e.id = :id')->setParameter('id', 1),
+        ]);
+
+        $formBuilder->add('property3', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'query_builder' => fn (EntityRepository $repo) => $repo->createQueryBuilder('e')->where('e.id = :id')->setParameter('id', 1),
+        ]);
+
+        $form = $formBuilder->getForm();
+
+        $form->submit([
+            'property1' => 1,
+            'property2' => 1,
+            'property3' => 2,
+        ]);
+
+        $choiceList1 = $form->get('property1')->getConfig()->getAttribute('choice_list');
+        $choiceList2 = $form->get('property2')->getConfig()->getAttribute('choice_list');
+        $choiceList3 = $form->get('property3')->getConfig()->getAttribute('choice_list');
+
+        $this->assertInstanceOf(LazyChoiceList::class, $choiceList1);
+        $this->assertSame($choiceList1, $choiceList2);
+        $this->assertSame($choiceList1, $choiceList3);
+    }
+
+    protected function createRegistryMock($name, $em): MockObject&ManagerRegistry
+    {
+        $registry = $this->createMock(ManagerRegistry::class);
         $registry->expects($this->any())
-                 ->method('getManager')
-                 ->with($this->equalTo($name))
-                 ->will($this->returnValue($em));
+            ->method('getManager')
+            ->with($this->equalTo($name))
+            ->willReturn($em);
 
         return $registry;
+    }
+
+    public function testPassDisabledAsOption()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'disabled' => true,
+            'class' => self::SINGLE_IDENT_CLASS,
+        ]);
+
+        $this->assertTrue($form->isDisabled());
+    }
+
+    public function testPassIdAndNameToView()
+    {
+        $view = $this->factory->createNamed('name', static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ])
+            ->createView();
+
+        $this->assertEquals('name', $view->vars['id']);
+        $this->assertEquals('name', $view->vars['name']);
+        $this->assertEquals('name', $view->vars['full_name']);
+    }
+
+    public function testPassIdAndNameToViewWithParent()
+    {
+        $view = $this->factory->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE)
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals('parent_child', $view['child']->vars['id']);
+        $this->assertEquals('child', $view['child']->vars['name']);
+        $this->assertEquals('parent[child]', $view['child']->vars['full_name']);
+    }
+
+    public function testPassIdAndNameToViewWithGrandParent()
+    {
+        $builder = $this->factory->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE)
+            ->add('child', FormTypeTest::TESTED_TYPE);
+        $builder->get('child')->add('grand_child', static::TESTED_TYPE, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ]);
+        $view = $builder->getForm()->createView();
+
+        $this->assertEquals('parent_child_grand_child', $view['child']['grand_child']->vars['id']);
+        $this->assertEquals('grand_child', $view['child']['grand_child']->vars['name']);
+        $this->assertEquals('parent[child][grand_child]', $view['child']['grand_child']->vars['full_name']);
+    }
+
+    public function testPassTranslationDomainToView()
+    {
+        $view = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'translation_domain' => 'domain',
+        ])
+            ->createView();
+
+        $this->assertSame('domain', $view->vars['translation_domain']);
+    }
+
+    public function testInheritTranslationDomainFromParent()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'translation_domain' => 'domain',
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals('domain', $view['child']->vars['translation_domain']);
+    }
+
+    public function testPreferOwnTranslationDomain()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'translation_domain' => 'parent_domain',
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+                'translation_domain' => 'domain',
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals('domain', $view['child']->vars['translation_domain']);
+    }
+
+    public function testDefaultTranslationDomain()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE)
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertNull($view['child']->vars['translation_domain']);
+    }
+
+    public function testPassLabelTranslationParametersToView()
+    {
+        $view = $this->factory->create(static::TESTED_TYPE, null, [
+            'label_translation_parameters' => ['%param%' => 'value'],
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ])
+            ->createView();
+
+        $this->assertSame(['%param%' => 'value'], $view->vars['label_translation_parameters']);
+    }
+
+    public function testPassHelpTranslationParametersToView()
+    {
+        $view = $this->factory->create(static::TESTED_TYPE, null, [
+            'help_translation_parameters' => ['%param%' => 'value'],
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ])
+            ->createView();
+
+        $this->assertSame(['%param%' => 'value'], $view->vars['help_translation_parameters']);
+    }
+
+    public function testPassAttrTranslationParametersToView()
+    {
+        $view = $this->factory->create(static::TESTED_TYPE, null, [
+            'attr_translation_parameters' => ['%param%' => 'value'],
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ])
+            ->createView();
+
+        $this->assertSame(['%param%' => 'value'], $view->vars['attr_translation_parameters']);
+    }
+
+    public function testInheritLabelTranslationParametersFromParent()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'label_translation_parameters' => ['%param%' => 'value'],
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals(['%param%' => 'value'], $view['child']->vars['label_translation_parameters']);
+    }
+
+    public function testInheritHelpTranslationParametersFromParent()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'help_translation_parameters' => ['%param%' => 'value'],
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals(['%param%' => 'value'], $view['child']->vars['help_translation_parameters']);
+    }
+
+    public function testInheritAttrTranslationParametersFromParent()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'attr_translation_parameters' => ['%param%' => 'value'],
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals(['%param%' => 'value'], $view['child']->vars['attr_translation_parameters']);
+    }
+
+    public function testPreferOwnLabelTranslationParameters()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'label_translation_parameters' => ['%parent_param%' => 'parent_value', '%override_param%' => 'parent_override_value'],
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'label_translation_parameters' => ['%override_param%' => 'child_value'],
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals(['%parent_param%' => 'parent_value', '%override_param%' => 'child_value'], $view['child']->vars['label_translation_parameters']);
+    }
+
+    public function testPreferOwnHelpTranslationParameters()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'help_translation_parameters' => ['%parent_param%' => 'parent_value', '%override_param%' => 'parent_override_value'],
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'help_translation_parameters' => ['%override_param%' => 'child_value'],
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals(['%parent_param%' => 'parent_value', '%override_param%' => 'child_value'], $view['child']->vars['help_translation_parameters']);
+    }
+
+    public function testPreferOwnAttrTranslationParameters()
+    {
+        $view = $this->factory
+            ->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE, null, [
+                'attr_translation_parameters' => ['%parent_param%' => 'parent_value', '%override_param%' => 'parent_override_value'],
+            ])
+            ->add('child', static::TESTED_TYPE, [
+                'attr_translation_parameters' => ['%override_param%' => 'child_value'],
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals(['%parent_param%' => 'parent_value', '%override_param%' => 'child_value'], $view['child']->vars['attr_translation_parameters']);
+    }
+
+    public function testDefaultLabelTranslationParameters()
+    {
+        $view = $this->factory->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE)
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals([], $view['child']->vars['label_translation_parameters']);
+    }
+
+    public function testDefaultHelpTranslationParameters()
+    {
+        $view = $this->factory->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE)
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals([], $view['child']->vars['help_translation_parameters']);
+    }
+
+    public function testDefaultAttrTranslationParameters()
+    {
+        $view = $this->factory->createNamedBuilder('parent', FormTypeTest::TESTED_TYPE)
+            ->add('child', static::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->getForm()
+            ->createView();
+
+        $this->assertEquals([], $view['child']->vars['attr_translation_parameters']);
+    }
+
+    public function testPassLabelToView()
+    {
+        $view = $this->factory->createNamed('__test___field', static::TESTED_TYPE, null, [
+            'label' => 'My label',
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ])
+            ->createView();
+
+        $this->assertSame('My label', $view->vars['label']);
+    }
+
+    public function testPassMultipartFalseToView()
+    {
+        $view = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ])
+            ->createView();
+
+        $this->assertFalse($view->vars['multipart']);
+    }
+
+    public function testSubmitNull($expected = null, $norm = null, $view = null)
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+        ]);
+        $form->submit(null);
+
+        $this->assertNull($form->getData());
+        $this->assertNull($form->getNormData());
+        $this->assertSame('', $form->getViewData(), 'View data is always a string');
+    }
+
+    public function testSubmitNullExpanded()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'expanded' => true,
+        ]);
+        $form->submit(null);
+
+        $this->assertNull($form->getData());
+        $this->assertNull($form->getNormData());
+        $this->assertSame('', $form->getViewData(), 'View data is always a string');
+    }
+
+    public function testSubmitNullMultiple()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'multiple' => true,
+        ]);
+        $form->submit(null);
+
+        $collection = new ArrayCollection();
+
+        $this->assertEquals($collection, $form->getData());
+        $this->assertEquals($collection, $form->getNormData());
+        $this->assertSame([], $form->getViewData(), 'View data is always an array');
+    }
+
+    public function testSubmitNullExpandedMultiple()
+    {
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'expanded' => true,
+            'multiple' => true,
+        ]);
+        $form->submit(null);
+
+        $collection = new ArrayCollection();
+
+        $this->assertEquals($collection, $form->getData());
+        $this->assertEquals($collection, $form->getNormData());
+        $this->assertSame([], $form->getViewData(), 'View data is always an array');
+    }
+
+    public function testSetDataEmptyArraySubmitNullMultiple()
+    {
+        $emptyArray = [];
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'multiple' => true,
+        ]);
+        $form->setData($emptyArray);
+        $form->submit(null);
+        $this->assertIsArray($form->getData());
+        $this->assertEquals([], $form->getData());
+        $this->assertEquals([], $form->getNormData());
+        $this->assertSame([], $form->getViewData(), 'View data is always an array');
+    }
+
+    public function testSetDataNonEmptyArraySubmitNullMultiple()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $this->persist([$entity1]);
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'multiple' => true,
+        ]);
+        $existing = [0 => $entity1];
+        $form->setData($existing);
+        $form->submit(null);
+        $this->assertIsArray($form->getData());
+        $this->assertEquals([], $form->getData());
+        $this->assertEquals([], $form->getNormData());
+        $this->assertSame([], $form->getViewData(), 'View data is always an array');
+    }
+
+    public function testSubmitNullUsesDefaultEmptyData($emptyData = 'empty', $expectedData = null)
+    {
+        $emptyData = '1';
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $this->persist([$entity1]);
+
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'empty_data' => $emptyData,
+        ]);
+        $form->submit(null);
+
+        $this->assertSame($emptyData, $form->getViewData());
+        $this->assertSame($entity1, $form->getNormData());
+        $this->assertSame($entity1, $form->getData());
+    }
+
+    public function testSubmitNullMultipleUsesDefaultEmptyData()
+    {
+        $emptyData = ['1'];
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $this->persist([$entity1]);
+
+        $form = $this->factory->create(static::TESTED_TYPE, null, [
+            'em' => 'default',
+            'class' => self::SINGLE_IDENT_CLASS,
+            'multiple' => true,
+            'empty_data' => $emptyData,
+        ]);
+        $form->submit(null);
+
+        $collection = new ArrayCollection([$entity1]);
+
+        $this->assertSame($emptyData, $form->getViewData());
+        $this->assertEquals($collection, $form->getNormData());
+        $this->assertEquals($collection, $form->getData());
+    }
+
+    public function testWithSameLoaderAndDifferentChoiceValueCallbacks()
+    {
+        $entity1 = new SingleIntIdEntity(1, 'Foo');
+        $entity2 = new SingleIntIdEntity(2, 'Bar');
+        $this->persist([$entity1, $entity2]);
+
+        $view = $this->factory->create(FormTypeTest::TESTED_TYPE)
+            ->add('entity_one', self::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+            ])
+            ->add('entity_two', self::TESTED_TYPE, [
+                'em' => 'default',
+                'class' => self::SINGLE_IDENT_CLASS,
+                'choice_value' => fn ($choice) => $choice ? $choice->name : '',
+            ])
+            ->createView()
+        ;
+
+        $this->assertSame('1', $view['entity_one']->vars['choices'][1]->value);
+        $this->assertSame('2', $view['entity_one']->vars['choices'][2]->value);
+
+        $this->assertSame('Foo', $view['entity_two']->vars['choices']['Foo']->value);
+        $this->assertSame('Bar', $view['entity_two']->vars['choices']['Bar']->value);
     }
 }

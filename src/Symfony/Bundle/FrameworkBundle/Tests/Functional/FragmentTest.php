@@ -11,31 +11,45 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\Functional;
 
-/**
- * @group functional
- */
-class FragmentTest extends WebTestCase
+class FragmentTest extends AbstractWebTestCase
 {
     /**
      * @dataProvider getConfigs
      */
     public function testFragment($insulate)
     {
-        $client = $this->createClient(array('test_case' => 'Fragment', 'root_config' => 'config.yml'));
+        $client = $this->createClient(['test_case' => 'Fragment', 'root_config' => 'config.yml', 'debug' => true]);
         if ($insulate) {
             $client->insulate();
         }
 
         $client->request('GET', '/fragment_home');
 
-        $this->assertEquals('bar txt--html--es--fr', $client->getResponse()->getContent());
+        $this->assertEquals(<<<TXT
+bar txt
+--
+html
+--
+es
+--
+fr
+TXT
+            , $client->getResponse()->getContent());
     }
 
-    public function getConfigs()
+    public static function getConfigs()
     {
-        return array(
-            array(false),
-            array(true),
-        );
+        return [
+            [false],
+            [true],
+        ];
+    }
+
+    public function testGenerateFragmentUri()
+    {
+        $client = self::createClient(['test_case' => 'Fragment', 'root_config' => 'config.yml', 'debug' => true]);
+        $client->request('GET', '/fragment_uri');
+
+        $this->assertSame('/_fragment?_hash=CCRGN2D%2FoAJbeGz%2F%2FdoH3bNSPwLCrmwC1zAYCGIKJ0E%3D&_path=_format%3Dhtml%26_locale%3Den%26_controller%3DSymfony%255CBundle%255CFrameworkBundle%255CTests%255CFunctional%255CBundle%255CTestBundle%255CController%255CFragmentController%253A%253AindexAction', $client->getResponse()->getContent());
     }
 }

@@ -11,52 +11,43 @@
 
 namespace Symfony\Component\Form\Extension\Core\DataTransformer;
 
+use Symfony\Component\Form\ChoiceList\ChoiceListInterface;
 use Symfony\Component\Form\DataTransformerInterface;
 use Symfony\Component\Form\Exception\TransformationFailedException;
-use Symfony\Component\Form\Extension\Core\ChoiceList\ChoiceListInterface;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
+ *
+ * @implements DataTransformerInterface<mixed, string>
  */
 class ChoiceToValueTransformer implements DataTransformerInterface
 {
-    private $choiceList;
-
-    /**
-     * Constructor.
-     *
-     * @param ChoiceListInterface $choiceList
-     */
-    public function __construct(ChoiceListInterface $choiceList)
-    {
-        $this->choiceList = $choiceList;
+    public function __construct(
+        private ChoiceListInterface $choiceList,
+    ) {
     }
 
-    public function transform($choice)
+    public function transform(mixed $choice): mixed
     {
-        return (string) current($this->choiceList->getValuesForChoices(array($choice)));
+        return (string) current($this->choiceList->getValuesForChoices([$choice]));
     }
 
-    public function reverseTransform($value)
+    public function reverseTransform(mixed $value): mixed
     {
-        if (null !== $value && !is_scalar($value)) {
-            throw new TransformationFailedException('Expected a scalar.');
+        if (null !== $value && !\is_string($value)) {
+            throw new TransformationFailedException('Expected a string or null.');
         }
 
-        // These are now valid ChoiceList values, so we can return null
-        // right away
-        if ('' === $value || null === $value) {
-            return;
+        $choices = $this->choiceList->getChoicesForValues([(string) $value]);
+
+        if (1 !== \count($choices)) {
+            if (null === $value || '' === $value) {
+                return null;
+            }
+
+            throw new TransformationFailedException(sprintf('The choice "%s" does not exist or is not unique.', $value));
         }
 
-        $choices = $this->choiceList->getChoicesForValues(array($value));
-
-        if (1 !== count($choices)) {
-            throw new TransformationFailedException(sprintf('The choice "%s" does not exist or is not unique', $value));
-        }
-
-        $choice = current($choices);
-
-        return '' === $choice ? null : $choice;
+        return current($choices);
     }
 }

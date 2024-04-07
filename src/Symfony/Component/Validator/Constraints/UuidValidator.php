@@ -14,9 +14,13 @@ namespace Symfony\Component\Validator\Constraints;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\ConstraintValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
+use Symfony\Component\Validator\Exception\UnexpectedValueException;
 
 /**
- * Validates whether the value is a valid UUID per RFC 4122.
+ * Validates whether the value is a valid UUID (also known as GUID).
+ *
+ * Strict validation will allow a UUID as specified per RFC 4122.
+ * Loose validation will allow any type of UUID.
  *
  * @author Colin O'Dell <colinodell@gmail.com>
  * @author Bernhard Schussek <bschussek@gmail.com>
@@ -31,14 +35,14 @@ class UuidValidator extends ConstraintValidator
 
     // Roughly speaking:
     // x = any hexadecimal character
-    // M = any allowed version {1..5}
+    // M = any allowed version {1..8}
     // N = any allowed variant {8, 9, a, b}
 
-    const STRICT_LENGTH = 36;
-    const STRICT_FIRST_HYPHEN_POSITION = 8;
-    const STRICT_LAST_HYPHEN_POSITION = 23;
-    const STRICT_VERSION_POSITION = 14;
-    const STRICT_VARIANT_POSITION = 19;
+    public const STRICT_LENGTH = 36;
+    public const STRICT_FIRST_HYPHEN_POSITION = 8;
+    public const STRICT_LAST_HYPHEN_POSITION = 23;
+    public const STRICT_VERSION_POSITION = 14;
+    public const STRICT_VARIANT_POSITION = 19;
 
     // The loose pattern validates similar yet non-compliant UUIDs.
     // Hyphens are completely optional. If present, they should only appear
@@ -52,38 +56,28 @@ class UuidValidator extends ConstraintValidator
 
     // Neither the version nor the variant is validated by this pattern.
 
-    const LOOSE_MAX_LENGTH = 39;
-    const LOOSE_FIRST_HYPHEN_POSITION = 4;
+    public const LOOSE_MAX_LENGTH = 39;
+    public const LOOSE_FIRST_HYPHEN_POSITION = 4;
 
-    /**
-     * @deprecated Deprecated since Symfony 2.6, to be removed in 3.0
-     */
-    const STRICT_PATTERN = '/^[a-f0-9]{8}-[a-f0-9]{4}-[%s][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i';
-
-    /**
-     * @deprecated Deprecated since Symfony 2.6, to be removed in 3.0
-     */
-    const LOOSE_PATTERN = '/^[a-f0-9]{4}(?:-?[a-f0-9]{4}){7}$/i';
-
-    /**
-     * @deprecated Deprecated since Symfony 2.6, to be removed in 3.0
-     */
-    const STRICT_UUID_LENGTH = self::STRICT_LENGTH;
-
-    /**
-     * {@inheritdoc}
-     */
-    public function validate($value, Constraint $constraint)
+    public function validate(mixed $value, Constraint $constraint): void
     {
+        if (!$constraint instanceof Uuid) {
+            throw new UnexpectedTypeException($constraint, Uuid::class);
+        }
+
         if (null === $value || '' === $value) {
             return;
         }
 
-        if (!is_scalar($value) && !(is_object($value) && method_exists($value, '__toString'))) {
-            throw new UnexpectedTypeException($value, 'string');
+        if (!\is_scalar($value) && !$value instanceof \Stringable) {
+            throw new UnexpectedValueException($value, 'string');
         }
 
         $value = (string) $value;
+
+        if (null !== $constraint->normalizer) {
+            $value = ($constraint->normalizer)($value);
+        }
 
         if ($constraint->strict) {
             $this->validateStrict($value, $constraint);
@@ -94,7 +88,7 @@ class UuidValidator extends ConstraintValidator
         $this->validateLoose($value, $constraint);
     }
 
-    private function validateLoose($value, Uuid $constraint)
+    private function validateLoose(string $value, Uuid $constraint): void
     {
         // Error priority:
         // 1. ERROR_INVALID_CHARACTERS
@@ -112,8 +106,8 @@ class UuidValidator extends ConstraintValidator
 
         for ($i = 0; $i < $l; ++$i) {
             // Check length
-            if (!isset($trimmed{$i})) {
-                $this->buildViolation($constraint->message)
+            if (!isset($trimmed[$i])) {
+                $this->context->buildViolation($constraint->message)
                     ->setParameter('{{ value }}', $this->formatValue($value))
                     ->setCode(Uuid::TOO_SHORT_ERROR)
                     ->addViolation();
@@ -124,9 +118,9 @@ class UuidValidator extends ConstraintValidator
             // Hyphens must occur every fifth position
             // xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx
             //     ^    ^    ^    ^    ^    ^    ^
-            if ('-' === $trimmed{$i}) {
+            if ('-' === $trimmed[$i]) {
                 if ($i !== $h) {
-                    $this->buildViolation($constraint->message)
+                    $this->context->buildViolation($constraint->message)
                         ->setParameter('{{ value }}', $this->formatValue($value))
                         ->setCode(Uuid::INVALID_HYPHEN_PLACEMENT_ERROR)
                         ->addViolation();
@@ -146,8 +140,8 @@ class UuidValidator extends ConstraintValidator
             }
 
             // Check characters
-            if (!ctype_xdigit($trimmed{$i})) {
-                $this->buildViolation($constraint->message)
+            if (!ctype_xdigit($trimmed[$i])) {
+                $this->context->buildViolation($constraint->message)
                     ->setParameter('{{ value }}', $this->formatValue($value))
                     ->setCode(Uuid::INVALID_CHARACTERS_ERROR)
                     ->addViolation();
@@ -157,15 +151,15 @@ class UuidValidator extends ConstraintValidator
         }
 
         // Check length again
-        if (isset($trimmed{$i})) {
-            $this->buildViolation($constraint->message)
+        if (isset($trimmed[$i])) {
+            $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ value }}', $this->formatValue($value))
                 ->setCode(Uuid::TOO_LONG_ERROR)
                 ->addViolation();
         }
     }
 
-    private function validateStrict($value, Uuid $constraint)
+    private function validateStrict(string $value, Uuid $constraint): void
     {
         // Error priority:
         // 1. ERROR_INVALID_CHARACTERS
@@ -179,8 +173,8 @@ class UuidValidator extends ConstraintValidator
 
         for ($i = 0; $i < self::STRICT_LENGTH; ++$i) {
             // Check length
-            if (!isset($value{$i})) {
-                $this->buildViolation($constraint->message)
+            if (!isset($value[$i])) {
+                $this->context->buildViolation($constraint->message)
                     ->setParameter('{{ value }}', $this->formatValue($value))
                     ->setCode(Uuid::TOO_SHORT_ERROR)
                     ->addViolation();
@@ -191,15 +185,12 @@ class UuidValidator extends ConstraintValidator
             // Check hyphen placement
             // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
             //         ^    ^    ^    ^
-            if ('-' === $value{$i}) {
+            if ('-' === $value[$i]) {
                 if ($i !== $h) {
-                    $this->buildViolation($constraint->message)
-                         ->setParameter(
-                             '{{ value }}',
-                             $this->formatValue($value)
-                         )
-                         ->setCode(Uuid::INVALID_HYPHEN_PLACEMENT_ERROR)
-                         ->addViolation();
+                    $this->context->buildViolation($constraint->message)
+                        ->setParameter('{{ value }}', $this->formatValue($value))
+                        ->setCode(Uuid::INVALID_HYPHEN_PLACEMENT_ERROR)
+                        ->addViolation();
 
                     return;
                 }
@@ -214,8 +205,8 @@ class UuidValidator extends ConstraintValidator
             }
 
             // Check characters
-            if (!ctype_xdigit($value{$i})) {
-                $this->buildViolation($constraint->message)
+            if (!ctype_xdigit($value[$i])) {
+                $this->context->buildViolation($constraint->message)
                     ->setParameter('{{ value }}', $this->formatValue($value))
                     ->setCode(Uuid::INVALID_CHARACTERS_ERROR)
                     ->addViolation();
@@ -225,7 +216,7 @@ class UuidValidator extends ConstraintValidator
 
             // Missing hyphen
             if ($i === $h) {
-                $this->buildViolation($constraint->message)
+                $this->context->buildViolation($constraint->message)
                     ->setParameter('{{ value }}', $this->formatValue($value))
                     ->setCode(Uuid::INVALID_HYPHEN_PLACEMENT_ERROR)
                     ->addViolation();
@@ -235,18 +226,20 @@ class UuidValidator extends ConstraintValidator
         }
 
         // Check length again
-        if (isset($value{$i})) {
-            $this->buildViolation($constraint->message)
+        if (isset($value[$i])) {
+            $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ value }}', $this->formatValue($value))
                 ->setCode(Uuid::TOO_LONG_ERROR)
                 ->addViolation();
         }
 
         // Check version
-        if (!in_array($value{self::STRICT_VERSION_POSITION}, $constraint->versions)) {
-            $this->buildViolation($constraint->message)
+        if (!\in_array($value[self::STRICT_VERSION_POSITION], $constraint->versions)) {
+            $code = Uuid::TIME_BASED_VERSIONS === $constraint->versions ? Uuid::INVALID_TIME_BASED_VERSION_ERROR : Uuid::INVALID_VERSION_ERROR;
+
+            $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ value }}', $this->formatValue($value))
-                ->setCode(Uuid::INVALID_VERSION_ERROR)
+                ->setCode($code)
                 ->addViolation();
         }
 
@@ -254,8 +247,8 @@ class UuidValidator extends ConstraintValidator
         //   0b10xx
         // & 0b1100 (12)
         // = 0b1000 (8)
-        if ((hexdec($value{self::STRICT_VARIANT_POSITION}) & 12) !== 8) {
-            $this->buildViolation($constraint->message)
+        if (8 !== (hexdec($value[self::STRICT_VARIANT_POSITION]) & 12)) {
+            $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ value }}', $this->formatValue($value))
                 ->setCode(Uuid::INVALID_VARIANT_ERROR)
                 ->addViolation();

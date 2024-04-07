@@ -11,50 +11,47 @@
 
 namespace Symfony\Component\Translation\Tests\Loader;
 
-use Symfony\Component\Translation\Loader\CsvFileLoader;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Resource\FileResource;
+use Symfony\Component\Translation\Exception\InvalidResourceException;
+use Symfony\Component\Translation\Exception\NotFoundResourceException;
+use Symfony\Component\Translation\Loader\CsvFileLoader;
 
-class CsvFileLoaderTest extends \PHPUnit_Framework_TestCase
+class CsvFileLoaderTest extends TestCase
 {
     public function testLoad()
     {
         $loader = new CsvFileLoader();
-        $resource = __DIR__.'/../fixtures/resources.csv';
+        $resource = __DIR__.'/../Fixtures/resources.csv';
         $catalogue = $loader->load($resource, 'en', 'domain1');
 
-        $this->assertEquals(array('foo' => 'bar'), $catalogue->all('domain1'));
+        $this->assertEquals(['foo' => 'bar'], $catalogue->all('domain1'));
         $this->assertEquals('en', $catalogue->getLocale());
-        $this->assertEquals(array(new FileResource($resource)), $catalogue->getResources());
+        $this->assertEquals([new FileResource($resource)], $catalogue->getResources());
     }
 
     public function testLoadDoesNothingIfEmpty()
     {
         $loader = new CsvFileLoader();
-        $resource = __DIR__.'/../fixtures/empty.csv';
+        $resource = __DIR__.'/../Fixtures/empty.csv';
         $catalogue = $loader->load($resource, 'en', 'domain1');
 
-        $this->assertEquals(array(), $catalogue->all('domain1'));
+        $this->assertEquals([], $catalogue->all('domain1'));
         $this->assertEquals('en', $catalogue->getLocale());
-        $this->assertEquals(array(new FileResource($resource)), $catalogue->getResources());
+        $this->assertEquals([new FileResource($resource)], $catalogue->getResources());
     }
 
-    /**
-     * @expectedException \Symfony\Component\Translation\Exception\NotFoundResourceException
-     */
     public function testLoadNonExistingResource()
     {
-        $loader = new CsvFileLoader();
-        $resource = __DIR__.'/../fixtures/not-exists.csv';
-        $loader->load($resource, 'en', 'domain1');
+        $this->expectException(NotFoundResourceException::class);
+
+        (new CsvFileLoader())->load(__DIR__.'/../Fixtures/not-exists.csv', 'en', 'domain1');
     }
 
-    /**
-     * @expectedException \Symfony\Component\Translation\Exception\InvalidResourceException
-     */
     public function testLoadNonLocalResource()
     {
-        $loader = new CsvFileLoader();
-        $resource = 'http://example.com/resources.csv';
-        $loader->load($resource, 'en', 'domain1');
+        $this->expectException(InvalidResourceException::class);
+
+        (new CsvFileLoader())->load('http://example.com/resources.csv', 'en', 'domain1');
     }
 }

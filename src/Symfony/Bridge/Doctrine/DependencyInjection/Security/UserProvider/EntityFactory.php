@@ -11,10 +11,9 @@
 
 namespace Symfony\Bridge\Doctrine\DependencyInjection\Security\UserProvider;
 
-use Symfony\Component\Config\Definition\Builder\NodeDefinition;
-
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\UserProvider\UserProviderFactoryInterface;
-use Symfony\Component\DependencyInjection\DefinitionDecorator;
+use Symfony\Component\Config\Definition\Builder\NodeDefinition;
+use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 
 /**
@@ -22,38 +21,41 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
  *
  * @author Fabien Potencier <fabien@symfony.com>
  * @author Christophe Coevoet <stof@notk.org>
+ *
+ * @final
  */
 class EntityFactory implements UserProviderFactoryInterface
 {
-    private $key;
-    private $providerId;
-
-    public function __construct($key, $providerId)
-    {
-        $this->key = $key;
-        $this->providerId = $providerId;
+    public function __construct(
+        private readonly string $key,
+        private readonly string $providerId,
+    ) {
     }
 
-    public function create(ContainerBuilder $container, $id, $config)
+    public function create(ContainerBuilder $container, string $id, array $config): void
     {
         $container
-            ->setDefinition($id, new DefinitionDecorator($this->providerId))
+            ->setDefinition($id, new ChildDefinition($this->providerId))
             ->addArgument($config['class'])
             ->addArgument($config['property'])
             ->addArgument($config['manager_name'])
         ;
     }
 
-    public function getKey()
+    public function getKey(): string
     {
         return $this->key;
     }
 
-    public function addConfiguration(NodeDefinition $node)
+    public function addConfiguration(NodeDefinition $node): void
     {
         $node
             ->children()
-                ->scalarNode('class')->isRequired()->cannotBeEmpty()->end()
+                ->scalarNode('class')
+                    ->isRequired()
+                    ->info('The full entity class name of your user class.')
+                    ->cannotBeEmpty()
+                ->end()
                 ->scalarNode('property')->defaultNull()->end()
                 ->scalarNode('manager_name')->defaultNull()->end()
             ->end()

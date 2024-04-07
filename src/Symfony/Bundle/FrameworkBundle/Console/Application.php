@@ -11,105 +11,211 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Console;
 
-use Symfony\Component\DependencyInjection\ContainerAwareInterface;
 use Symfony\Component\Console\Application as BaseApplication;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Command\ListCommand;
+use Symfony\Component\Console\Command\TraceableCommand;
+use Symfony\Component\Console\Debug\CliRequest;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\HttpKernel\KernelInterface;
-use Symfony\Component\HttpKernel\Kernel;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
+use Symfony\Component\HttpKernel\Kernel;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 /**
- * Application.
- *
  * @author Fabien Potencier <fabien@symfony.com>
  */
 class Application extends BaseApplication
 {
-    private $kernel;
-    private $commandsRegistered = false;
+    private bool $commandsRegistered = false;
+    private array $registrationErrors = [];
 
-    /**
-     * Constructor.
-     *
-     * @param KernelInterface $kernel A KernelInterface instance
-     */
-    public function __construct(KernelInterface $kernel)
-    {
-        $this->kernel = $kernel;
+    public function __construct(
+        private KernelInterface $kernel,
+    ) {
+        parent::__construct('Symfony', Kernel::VERSION);
 
-        parent::__construct('Symfony', Kernel::VERSION.' - '.$kernel->getName().'/'.$kernel->getEnvironment().($kernel->isDebug() ? '/debug' : ''));
-
-        $this->getDefinition()->addOption(new InputOption('--shell', '-s', InputOption::VALUE_NONE, 'Launch the shell.'));
-        $this->getDefinition()->addOption(new InputOption('--process-isolation', null, InputOption::VALUE_NONE, 'Launch commands from shell as a separate process.'));
-        $this->getDefinition()->addOption(new InputOption('--env', '-e', InputOption::VALUE_REQUIRED, 'The Environment name.', $kernel->getEnvironment()));
-        $this->getDefinition()->addOption(new InputOption('--no-debug', null, InputOption::VALUE_NONE, 'Switches off debug mode.'));
+        $inputDefinition = $this->getDefinition();
+        $inputDefinition->addOption(new InputOption('--env', '-e', InputOption::VALUE_REQUIRED, 'The Environment name.', $kernel->getEnvironment()));
+        $inputDefinition->addOption(new InputOption('--no-debug', null, InputOption::VALUE_NONE, 'Switch off debug mode.'));
+        $inputDefinition->addOption(new InputOption('--profile', null, InputOption::VALUE_NONE, 'Enables profiling (requires debug).'));
     }
 
     /**
      * Gets the Kernel associated with this Console.
-     *
-     * @return KernelInterface A KernelInterface instance
      */
-    public function getKernel()
+    public function getKernel(): KernelInterface
     {
         return $this->kernel;
+    }
+
+    public function reset(): void
+    {
+        if ($this->kernel->getContainer()->has('services_resetter')) {
+            $this->kernel->getContainer()->get('services_resetter')->reset();
+        }
     }
 
     /**
      * Runs the current application.
      *
-     * @param InputInterface  $input  An Input instance
-     * @param OutputInterface $output An Output instance
-     *
-     * @return int     0 if everything went fine, or an error code
+     * @return int 0 if everything went fine, or an error code
      */
-    public function doRun(InputInterface $input, OutputInterface $output)
+    public function doRun(InputInterface $input, OutputInterface $output): int
     {
-        $this->kernel->boot();
+        $this->registerCommands();
 
-        if (!$this->commandsRegistered) {
-            $this->registerCommands();
-
-            $this->commandsRegistered = true;
+        if ($this->registrationErrors) {
+            $this->renderRegistrationErrors($input, $output);
         }
 
-        $container = $this->kernel->getContainer();
-
-        foreach ($this->all() as $command) {
-            if ($command instanceof ContainerAwareInterface) {
-                $command->setContainer($container);
-            }
-        }
-
-        $this->setDispatcher($container->get('event_dispatcher'));
-
-        if (true === $input->hasParameterOption(array('--shell', '-s'))) {
-            $shell = new Shell($this);
-            $shell->setProcessIsolation($input->hasParameterOption(array('--process-isolation')));
-            $shell->run();
-
-            return 0;
-        }
+        $this->setDispatcher($this->kernel->getContainer()->get('event_dispatcher'));
 
         return parent::doRun($input, $output);
     }
 
-    protected function registerCommands()
+    protected function doRunCommand(Command $command, InputInterface $input, OutputInterface $output): int
     {
+        $requestStack = null;
+        $renderRegistrationErrors = true;
+
+        if (!$command instanceof ListCommand) {
+            if ($this->registrationErrors) {
+                $this->renderRegistrationErrors($input, $output);
+                $this->registrationErrors = [];
+                $renderRegistrationErrors = false;
+            }
+        }
+
+        if ($input->hasParameterOption('--profile')) {
+            $container = $this->kernel->getContainer();
+
+            if (!$this->kernel->isDebug()) {
+                if ($output instanceof ConsoleOutputInterface) {
+                    $output = $output->getErrorOutput();
+                }
+
+                (new SymfonyStyle($input, $output))->warning('Debug mode should be enabled when the "--profile" option is used.');
+            } elseif (!$container->has('debug.stopwatch')) {
+                if ($output instanceof ConsoleOutputInterface) {
+                    $output = $output->getErrorOutput();
+                }
+
+                (new SymfonyStyle($input, $output))->warning('The "--profile" option needs the Stopwatch component. Try running "composer require symfony/stopwatch".');
+            } elseif (!$container->has('.virtual_request_stack')) {
+                if ($output instanceof ConsoleOutputInterface) {
+                    $output = $output->getErrorOutput();
+                }
+
+                (new SymfonyStyle($input, $output))->warning('The "--profile" option needs the profiler integration. Try enabling the "framework.profiler" option.');
+            } else {
+                $command = new TraceableCommand($command, $container->get('debug.stopwatch'));
+
+                $requestStack = $container->get('.virtual_request_stack');
+                $requestStack->push(new CliRequest($command));
+            }
+        }
+
+        try {
+            $returnCode = parent::doRunCommand($command, $input, $output);
+        } finally {
+            $requestStack?->pop();
+        }
+
+        if ($renderRegistrationErrors && $this->registrationErrors) {
+            $this->renderRegistrationErrors($input, $output);
+            $this->registrationErrors = [];
+        }
+
+        return $returnCode;
+    }
+
+    public function find(string $name): Command
+    {
+        $this->registerCommands();
+
+        return parent::find($name);
+    }
+
+    public function get(string $name): Command
+    {
+        $this->registerCommands();
+
+        return parent::get($name);
+    }
+
+    public function all(?string $namespace = null): array
+    {
+        $this->registerCommands();
+
+        return parent::all($namespace);
+    }
+
+    public function getLongVersion(): string
+    {
+        return parent::getLongVersion().sprintf(' (env: <comment>%s</>, debug: <comment>%s</>)', $this->kernel->getEnvironment(), $this->kernel->isDebug() ? 'true' : 'false');
+    }
+
+    public function add(Command $command): ?Command
+    {
+        $this->registerCommands();
+
+        return parent::add($command);
+    }
+
+    protected function registerCommands(): void
+    {
+        if ($this->commandsRegistered) {
+            return;
+        }
+
+        $this->commandsRegistered = true;
+
+        $this->kernel->boot();
+
         $container = $this->kernel->getContainer();
 
         foreach ($this->kernel->getBundles() as $bundle) {
             if ($bundle instanceof Bundle) {
-                $bundle->registerCommands($this);
+                try {
+                    $bundle->registerCommands($this);
+                } catch (\Throwable $e) {
+                    $this->registrationErrors[] = $e;
+                }
             }
         }
 
+        if ($container->has('console.command_loader')) {
+            $this->setCommandLoader($container->get('console.command_loader'));
+        }
+
         if ($container->hasParameter('console.command.ids')) {
+            $lazyCommandIds = $container->hasParameter('console.lazy_command.ids') ? $container->getParameter('console.lazy_command.ids') : [];
             foreach ($container->getParameter('console.command.ids') as $id) {
-                $this->add($container->get($id));
+                if (!isset($lazyCommandIds[$id])) {
+                    try {
+                        $this->add($container->get($id));
+                    } catch (\Throwable $e) {
+                        $this->registrationErrors[] = $e;
+                    }
+                }
             }
+        }
+    }
+
+    private function renderRegistrationErrors(InputInterface $input, OutputInterface $output): void
+    {
+        if ($output instanceof ConsoleOutputInterface) {
+            $output = $output->getErrorOutput();
+        }
+
+        (new SymfonyStyle($input, $output))->warning('Some commands could not be registered:');
+
+        foreach ($this->registrationErrors as $error) {
+            $this->doRenderThrowable($error, $output);
         }
     }
 }

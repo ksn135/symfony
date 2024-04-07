@@ -15,19 +15,21 @@ class TestClassMagicGet
 {
     private $magicProperty;
 
+    public $publicProperty;
+
     public function __construct($value)
     {
         $this->magicProperty = $value;
     }
 
-    public function __set($property, $value)
+    public function __set(string $property, $value): void
     {
         if ('magicProperty' === $property) {
             $this->magicProperty = $value;
         }
     }
 
-    public function __get($property)
+    public function __get(string $property)
     {
         if ('magicProperty' === $property) {
             return $this->magicProperty;
@@ -36,5 +38,10 @@ class TestClassMagicGet
         if ('constantMagicProperty' === $property) {
             return 'constant value';
         }
+    }
+
+    public function __isset(string $property)
+    {
+        return \in_array($property, ['magicProperty', 'constantMagicProperty'], true);
     }
 }

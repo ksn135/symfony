@@ -11,15 +11,24 @@
 
 namespace Symfony\Bundle\SecurityBundle\Tests\DependencyInjection;
 
+use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
-use Symfony\Component\Config\FileLocator;
 
-class XmlCompleteConfigurationTest extends CompleteConfigurationTest
+class XmlCompleteConfigurationTest extends CompleteConfigurationTestCase
 {
-    protected function loadFromFile(ContainerBuilder $container, $file)
+    public function testFirewallPatterns()
     {
-        $loadXml = new XmlFileLoader($container, new FileLocator(__DIR__.'/Fixtures/xml'));
-        $loadXml->load($file.'.xml');
+        $this->markTestSkipped('This features is not supported in XML.');
+    }
+
+    protected function getLoader(ContainerBuilder $container)
+    {
+        return new XmlFileLoader($container, new FileLocator(__DIR__.'/Fixtures/xml'));
+    }
+
+    protected function getFileExtension()
+    {
+        return 'xml';
     }
 }

@@ -15,12 +15,10 @@ use Symfony\Component\Finder\Iterator\CustomFilterIterator;
 
 class CustomFilterIteratorTest extends IteratorTestCase
 {
-    /**
-     * @expectedException \InvalidArgumentException
-     */
     public function testWithInvalidFilter()
     {
-        new CustomFilterIterator(new Iterator(), array('foo'));
+        $this->expectException(\InvalidArgumentException::class);
+        new CustomFilterIterator(new Iterator(), ['foo']);
     }
 
     /**
@@ -28,19 +26,19 @@ class CustomFilterIteratorTest extends IteratorTestCase
      */
     public function testAccept($filters, $expected)
     {
-        $inner = new Iterator(array('test.php', 'test.py', 'foo.php'));
+        $inner = new Iterator(['test.php', 'test.py', 'foo.php']);
 
         $iterator = new CustomFilterIterator($inner, $filters);
 
         $this->assertIterator($expected, $iterator);
     }
 
-    public function getAcceptData()
+    public static function getAcceptData()
     {
-        return array(
-            array(array(function (\SplFileInfo $fileinfo) { return false; }), array()),
-            array(array(function (\SplFileInfo $fileinfo) { return preg_match('/^test/', $fileinfo) > 0; }), array('test.php', 'test.py')),
-            array(array('is_dir'), array()),
-        );
+        return [
+            [[fn (\SplFileInfo $fileinfo) => false], []],
+            [[fn (\SplFileInfo $fileinfo) => str_starts_with($fileinfo, 'test')], ['test.php', 'test.py']],
+            [['is_dir'], []],
+        ];
     }
 }

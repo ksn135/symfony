@@ -1,16 +1,15 @@
 <?php
 
-$container->loadFromExtension('framework', array(
-    'csrf_protection' => array(
-        'enabled' => false,
-    ),
-    'form' => array(
-        'enabled' => true,
-        'csrf_protection' => array(
-            'enabled' => true,
-        ),
-    ),
-    'session' => array(
+$container->loadFromExtension('framework', [
+    'annotations' => false,
+    'http_method_override' => false,
+    'handle_all_throwables' => true,
+    'php_errors' => ['log' => true],
+    'csrf_protection' => true,
+    'session' => [
+        'storage_factory_id' => 'session.storage.factory.native',
         'handler_id' => null,
-    ),
-));
+        'cookie_secure' => 'auto',
+        'cookie_samesite' => 'lax',
+    ],
+]);

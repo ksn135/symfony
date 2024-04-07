@@ -12,113 +12,98 @@
 namespace Symfony\Component\Translation;
 
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Translation\Exception\InvalidArgumentException;
+use Symfony\Contracts\Translation\LocaleAwareInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
  * @author Abdellatif Ait boudad <a.aitboudad@gmail.com>
  */
-class LoggingTranslator implements TranslatorInterface
+class LoggingTranslator implements TranslatorInterface, TranslatorBagInterface, LocaleAwareInterface
 {
-    /**
-     * @var TranslatorInterface
-     */
-    private $translator;
+    private TranslatorInterface $translator;
+    private LoggerInterface $logger;
 
     /**
-     * @var LoggerInterface
+     * @param TranslatorInterface&TranslatorBagInterface&LocaleAwareInterface $translator The translator must implement TranslatorBagInterface
      */
-    private $logger;
-
-    /**
-     * @param Translator      $translator
-     * @param LoggerInterface $logger
-     */
-    public function __construct($translator, LoggerInterface $logger)
+    public function __construct(TranslatorInterface $translator, LoggerInterface $logger)
     {
-        if (!($translator instanceof TranslatorInterface && $translator instanceof TranslatorBagInterface)) {
-            throw new \InvalidArgumentException(sprintf('The Translator "%s" must implements TranslatorInterface and TranslatorBagInterface.', get_class($translator)));
+        if (!$translator instanceof TranslatorBagInterface || !$translator instanceof LocaleAwareInterface) {
+            throw new InvalidArgumentException(sprintf('The Translator "%s" must implement TranslatorInterface, TranslatorBagInterface and LocaleAwareInterface.', get_debug_type($translator)));
         }
 
         $this->translator = $translator;
         $this->logger = $logger;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function trans($id, array $parameters = array(), $domain = null, $locale = null)
+    public function trans(?string $id, array $parameters = [], ?string $domain = null, ?string $locale = null): string
     {
-        $trans = $this->translator->trans($id, $parameters , $domain , $locale);
+        $trans = $this->translator->trans($id = (string) $id, $parameters, $domain, $locale);
         $this->log($id, $domain, $locale);
 
         return $trans;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function transChoice($id, $number, array $parameters = array(), $domain = null, $locale = null)
+    public function setLocale(string $locale): void
     {
-        $trans = $this->translator->transChoice($id, $number, $parameters, $domain, $locale);
-        $this->log($id, $domain, $locale);
-
-        return $trans;
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function setLocale($locale)
-    {
+        $prev = $this->translator->getLocale();
         $this->translator->setLocale($locale);
+        if ($prev === $locale) {
+            return;
+        }
+
+        $this->logger->debug(sprintf('The locale of the translator has changed from "%s" to "%s".', $prev, $locale));
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @api
-     */
-    public function getLocale()
+    public function getLocale(): string
     {
         return $this->translator->getLocale();
     }
 
-    /**
-     * Passes through all unknown calls onto the translator object.
-     */
-    public function __call($method, $args)
+    public function getCatalogue(?string $locale = null): MessageCatalogueInterface
     {
-        return call_user_func_array(array($this->translator, $method), $args);
+        return $this->translator->getCatalogue($locale);
+    }
+
+    public function getCatalogues(): array
+    {
+        return $this->translator->getCatalogues();
+    }
+
+    /**
+     * Gets the fallback locales.
+     */
+    public function getFallbackLocales(): array
+    {
+        if ($this->translator instanceof Translator || method_exists($this->translator, 'getFallbackLocales')) {
+            return $this->translator->getFallbackLocales();
+        }
+
+        return [];
+    }
+
+    public function __call(string $method, array $args): mixed
+    {
+        return $this->translator->{$method}(...$args);
     }
 
     /**
      * Logs for missing translations.
-     *
-     * @param string      $id
-     * @param string|null $domain
-     * @param string|null $locale
      */
-    private function log($id, $domain, $locale)
+    private function log(string $id, ?string $domain, ?string $locale): void
     {
-        if (null === $locale) {
-            $locale = $this->getLocale();
-        }
+        $domain ??= 'messages';
 
-        if (null === $domain) {
-            $domain = 'messages';
-        }
-
-        $id = (string) $id;
         $catalogue = $this->translator->getCatalogue($locale);
         if ($catalogue->defines($id, $domain)) {
             return;
         }
 
         if ($catalogue->has($id, $domain)) {
-            $this->logger->debug('Translation use fallback catalogue.', array('id' => $id, 'domain' => $domain, 'locale' => $catalogue->getLocale()));
+            $this->logger->debug('Translation use fallback catalogue.', ['id' => $id, 'domain' => $domain, 'locale' => $catalogue->getLocale()]);
         } else {
-            $this->logger->warning('Translation not found.', array('id' => $id, 'domain' => $domain, 'locale' => $catalogue->getLocale()));
+            $this->logger->warning('Translation not found.', ['id' => $id, 'domain' => $domain, 'locale' => $catalogue->getLocale()]);
         }
     }
 }

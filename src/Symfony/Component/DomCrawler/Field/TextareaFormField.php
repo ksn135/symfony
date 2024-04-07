@@ -15,8 +15,6 @@ namespace Symfony\Component\DomCrawler\Field;
  * TextareaFormField represents a textarea form field (an HTML textarea tag).
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 class TextareaFormField extends FormField
 {
@@ -25,7 +23,7 @@ class TextareaFormField extends FormField
      *
      * @throws \LogicException When node type is incorrect
      */
-    protected function initialize()
+    protected function initialize(): void
     {
         if ('textarea' !== $this->node->nodeName) {
             throw new \LogicException(sprintf('A TextareaFormField can only be created from a textarea tag (%s given).', $this->node->nodeName));

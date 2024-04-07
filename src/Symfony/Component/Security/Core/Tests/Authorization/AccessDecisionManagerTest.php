@@ -11,187 +11,278 @@
 
 namespace Symfony\Component\Security\Core\Tests\Authorization;
 
+use PHPUnit\Framework\Assert;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Authorization\AccessDecisionManager;
+use Symfony\Component\Security\Core\Authorization\Strategy\AccessDecisionStrategyInterface;
+use Symfony\Component\Security\Core\Authorization\Voter\CacheableVoterInterface;
 use Symfony\Component\Security\Core\Authorization\Voter\VoterInterface;
 
-class AccessDecisionManagerTest extends \PHPUnit_Framework_TestCase
+class AccessDecisionManagerTest extends TestCase
 {
-    public function testSupportsClass()
+    public function provideBadVoterResults(): array
     {
-        $manager = new AccessDecisionManager(array(
-            $this->getVoterSupportsClass(true),
-            $this->getVoterSupportsClass(false),
-        ));
-        $this->assertTrue($manager->supportsClass('FooClass'));
-
-        $manager = new AccessDecisionManager(array(
-            $this->getVoterSupportsClass(false),
-            $this->getVoterSupportsClass(false),
-        ));
-        $this->assertFalse($manager->supportsClass('FooClass'));
+        return [
+            [3],
+            [true],
+        ];
     }
 
-    public function testSupportsAttribute()
+    public function testVoterCalls()
     {
-        $manager = new AccessDecisionManager(array(
-            $this->getVoterSupportsAttribute(true),
-            $this->getVoterSupportsAttribute(false),
-        ));
-        $this->assertTrue($manager->supportsAttribute('foo'));
+        $token = $this->createMock(TokenInterface::class);
 
-        $manager = new AccessDecisionManager(array(
-            $this->getVoterSupportsAttribute(false),
-            $this->getVoterSupportsAttribute(false),
-        ));
-        $this->assertFalse($manager->supportsAttribute('foo'));
+        $voters = [
+            $this->getExpectedVoter(VoterInterface::ACCESS_DENIED),
+            $this->getExpectedVoter(VoterInterface::ACCESS_GRANTED),
+            $this->getUnexpectedVoter(),
+        ];
+
+        $strategy = new class() implements AccessDecisionStrategyInterface {
+            public function decide(\Traversable $results): bool
+            {
+                $i = 0;
+                foreach ($results as $result) {
+                    switch ($i++) {
+                        case 0:
+                            Assert::assertSame(VoterInterface::ACCESS_DENIED, $result);
+
+                            break;
+                        case 1:
+                            Assert::assertSame(VoterInterface::ACCESS_GRANTED, $result);
+
+                            return true;
+                    }
+                }
+
+                return false;
+            }
+        };
+
+        $manager = new AccessDecisionManager($voters, $strategy);
+
+        $this->assertTrue($manager->decide($token, ['ROLE_FOO']));
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
-    public function testSetVotersEmpty()
+    public function testCacheableVoters()
     {
-        $manager = new AccessDecisionManager(array());
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->once())
+            ->method('supportsAttribute')
+            ->with('foo')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('supportsType')
+            ->with('string')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('vote')
+            ->with($token, 'bar', ['foo'])
+            ->willReturn(VoterInterface::ACCESS_GRANTED);
+
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertTrue($manager->decide($token, ['foo'], 'bar'));
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
-    public function testSetUnsupportedStrategy()
+    public function testCacheableVotersIgnoresNonStringAttributes()
     {
-        new AccessDecisionManager(array($this->getVoter(VoterInterface::ACCESS_GRANTED)), 'fooBar');
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->never())
+            ->method('supportsAttribute');
+        $voter
+            ->expects($this->once())
+            ->method('supportsType')
+            ->with('string')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('vote')
+            ->with($token, 'bar', [1337])
+            ->willReturn(VoterInterface::ACCESS_GRANTED);
+
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertTrue($manager->decide($token, [1337], 'bar'));
     }
 
-    /**
-     * @dataProvider getStrategyTests
-     */
-    public function testStrategies($strategy, $voters, $allowIfAllAbstainDecisions, $allowIfEqualGrantedDeniedDecisions, $expected)
+    public function testCacheableVotersWithMultipleAttributes()
     {
-        $token = $this->getMock('Symfony\Component\Security\Core\Authentication\Token\TokenInterface');
-        $manager = new AccessDecisionManager($voters, $strategy, $allowIfAllAbstainDecisions, $allowIfEqualGrantedDeniedDecisions);
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->exactly(2))
+            ->method('supportsAttribute')
+            ->willReturnCallback(function (...$args) {
+                static $series = [
+                    [['foo'], false],
+                    [['bar'], true],
+                ];
 
-        $this->assertSame($expected, $manager->decide($token, array('ROLE_FOO')));
+                [$expectedArgs, $return] = array_shift($series);
+                $this->assertSame($expectedArgs, $args);
+
+                return $return;
+            });
+        $voter
+            ->expects($this->once())
+            ->method('supportsType')
+            ->with('string')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('vote')
+            ->with($token, 'bar', ['foo', 'bar'])
+            ->willReturn(VoterInterface::ACCESS_GRANTED);
+
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertTrue($manager->decide($token, ['foo', 'bar'], 'bar', true));
     }
 
-    /**
-     * @dataProvider getStrategiesWith2RolesTests
-     */
-    public function testStrategiesWith2Roles($token, $strategy, $voter, $expected)
+    public function testCacheableVotersWithEmptyAttributes()
     {
-        $manager = new AccessDecisionManager(array($voter), $strategy);
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->never())
+            ->method('supportsAttribute');
+        $voter
+            ->expects($this->once())
+            ->method('supportsType')
+            ->with('string')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('vote')
+            ->with($token, 'bar', [])
+            ->willReturn(VoterInterface::ACCESS_GRANTED);
 
-        $this->assertSame($expected, $manager->decide($token, array('ROLE_FOO', 'ROLE_BAR')));
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertTrue($manager->decide($token, [], 'bar'));
     }
 
-    public function getStrategiesWith2RolesTests()
+    public function testCacheableVotersSupportsMethodsCalledOnce()
     {
-        $token = $this->getMock('Symfony\Component\Security\Core\Authentication\Token\TokenInterface');
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->once())
+            ->method('supportsAttribute')
+            ->with('foo')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('supportsType')
+            ->with('string')
+            ->willReturn(true);
+        $voter
+            ->expects($this->exactly(2))
+            ->method('vote')
+            ->with($token, 'bar', ['foo'])
+            ->willReturn(VoterInterface::ACCESS_GRANTED);
 
-        return array(
-            array($token, 'affirmative', $this->getVoter(VoterInterface::ACCESS_DENIED), false),
-            array($token, 'affirmative', $this->getVoter(VoterInterface::ACCESS_GRANTED), true),
-
-            array($token, 'consensus', $this->getVoter(VoterInterface::ACCESS_DENIED), false),
-            array($token, 'consensus', $this->getVoter(VoterInterface::ACCESS_GRANTED), true),
-
-            array($token, 'unanimous', $this->getVoterFor2Roles($token, VoterInterface::ACCESS_DENIED, VoterInterface::ACCESS_DENIED), false),
-            array($token, 'unanimous', $this->getVoterFor2Roles($token, VoterInterface::ACCESS_DENIED, VoterInterface::ACCESS_GRANTED), false),
-            array($token, 'unanimous', $this->getVoterFor2Roles($token, VoterInterface::ACCESS_GRANTED, VoterInterface::ACCESS_DENIED), false),
-            array($token, 'unanimous', $this->getVoterFor2Roles($token, VoterInterface::ACCESS_GRANTED, VoterInterface::ACCESS_GRANTED), true),
-        );
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertTrue($manager->decide($token, ['foo'], 'bar'));
+        $this->assertTrue($manager->decide($token, ['foo'], 'bar'));
     }
 
-    protected function getVoterFor2Roles($token, $vote1, $vote2)
+    public function testCacheableVotersNotCalled()
     {
-        $voter = $this->getMock('Symfony\Component\Security\Core\Authorization\Voter\VoterInterface');
-        $voter->expects($this->exactly(2))
-              ->method('vote')
-              ->will($this->returnValueMap(array(
-                  array($token, null, array("ROLE_FOO"),$vote1),
-                  array($token, null, array("ROLE_BAR"),$vote2),
-              )))
-        ;
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->once())
+            ->method('supportsAttribute')
+            ->with('foo')
+            ->willReturn(false);
+        $voter
+            ->expects($this->never())
+            ->method('supportsType');
+        $voter
+            ->expects($this->never())
+            ->method('vote');
 
-        return $voter;
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertFalse($manager->decide($token, ['foo'], 'bar'));
     }
 
-    public function getStrategyTests()
+    public function testCacheableVotersWithMultipleAttributesAndNonString()
     {
-        return array(
-            // affirmative
-            array(AccessDecisionManager::STRATEGY_AFFIRMATIVE, $this->getVoters(1, 0, 0), false, true, true),
-            array(AccessDecisionManager::STRATEGY_AFFIRMATIVE, $this->getVoters(1, 2, 0), false, true, true),
-            array(AccessDecisionManager::STRATEGY_AFFIRMATIVE, $this->getVoters(0, 1, 0), false, true, false),
-            array(AccessDecisionManager::STRATEGY_AFFIRMATIVE, $this->getVoters(0, 0, 1), false, true, false),
-            array(AccessDecisionManager::STRATEGY_AFFIRMATIVE, $this->getVoters(0, 0, 1), true, true, true),
+        $token = $this->createMock(TokenInterface::class);
+        $voter = $this->getMockBuilder(CacheableVoterInterface::class)->getMockForAbstractClass();
+        $voter
+            ->expects($this->once())
+            ->method('supportsAttribute')
+            ->with('foo')
+            ->willReturn(false);
+        $voter
+            // Voter does not support "foo", but given 1337 is not a string, it implicitly supports it.
+            ->expects($this->once())
+            ->method('supportsType')
+            ->with('string')
+            ->willReturn(true);
+        $voter
+            ->expects($this->once())
+            ->method('vote')
+            ->with($token, 'bar', ['foo', 1337])
+            ->willReturn(VoterInterface::ACCESS_GRANTED);
 
-            // consensus
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(1, 0, 0), false, true, true),
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(1, 2, 0), false, true, false),
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(2, 1, 0), false, true, true),
-
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(0, 0, 1), false, true, false),
-
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(0, 0, 1), true, true, true),
-
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(2, 2, 0), false, true, true),
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(2, 2, 1), false, true, true),
-
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(2, 2, 0), false, false, false),
-            array(AccessDecisionManager::STRATEGY_CONSENSUS, $this->getVoters(2, 2, 1), false, false, false),
-
-            // unanimous
-            array(AccessDecisionManager::STRATEGY_UNANIMOUS, $this->getVoters(1, 0, 0), false, true, true),
-            array(AccessDecisionManager::STRATEGY_UNANIMOUS, $this->getVoters(1, 0, 1), false, true, true),
-            array(AccessDecisionManager::STRATEGY_UNANIMOUS, $this->getVoters(1, 1, 0), false, true, false),
-
-            array(AccessDecisionManager::STRATEGY_UNANIMOUS, $this->getVoters(0, 0, 2), false, true, false),
-            array(AccessDecisionManager::STRATEGY_UNANIMOUS, $this->getVoters(0, 0, 2), true, true, true),
-        );
+        $manager = new AccessDecisionManager([$voter]);
+        $this->assertTrue($manager->decide($token, ['foo', 1337], 'bar', true));
     }
 
-    protected function getVoters($grants, $denies, $abstains)
+    protected static function getVoters($grants, $denies, $abstains): array
     {
-        $voters = array();
-        for ($i = 0; $i < $grants; $i++) {
-            $voters[] = $this->getVoter(VoterInterface::ACCESS_GRANTED);
+        $voters = [];
+        for ($i = 0; $i < $grants; ++$i) {
+            $voters[] = self::getVoter(VoterInterface::ACCESS_GRANTED);
         }
-        for ($i = 0; $i < $denies; $i++) {
-            $voters[] = $this->getVoter(VoterInterface::ACCESS_DENIED);
+        for ($i = 0; $i < $denies; ++$i) {
+            $voters[] = self::getVoter(VoterInterface::ACCESS_DENIED);
         }
-        for ($i = 0; $i < $abstains; $i++) {
-            $voters[] = $this->getVoter(VoterInterface::ACCESS_ABSTAIN);
+        for ($i = 0; $i < $abstains; ++$i) {
+            $voters[] = self::getVoter(VoterInterface::ACCESS_ABSTAIN);
         }
 
         return $voters;
     }
 
-    protected function getVoter($vote)
+    protected static function getVoter($vote)
     {
-        $voter = $this->getMock('Symfony\Component\Security\Core\Authorization\Voter\VoterInterface');
-        $voter->expects($this->any())
-              ->method('vote')
-              ->will($this->returnValue($vote));
+        return new class($vote) implements VoterInterface {
+            private int $vote;
+
+            public function __construct(int $vote)
+            {
+                $this->vote = $vote;
+            }
+
+            public function vote(TokenInterface $token, $subject, array $attributes)
+            {
+                return $this->vote;
+            }
+        };
+    }
+
+    private function getExpectedVoter(int $vote): VoterInterface
+    {
+        $voter = $this->createMock(VoterInterface::class);
+        $voter->expects($this->once())
+            ->method('vote')
+            ->willReturn($vote);
 
         return $voter;
     }
 
-    protected function getVoterSupportsClass($ret)
+    private function getUnexpectedVoter(): VoterInterface
     {
-        $voter = $this->getMock('Symfony\Component\Security\Core\Authorization\Voter\VoterInterface');
-        $voter->expects($this->any())
-              ->method('supportsClass')
-              ->will($this->returnValue($ret));
-
-        return $voter;
-    }
-
-    protected function getVoterSupportsAttribute($ret)
-    {
-        $voter = $this->getMock('Symfony\Component\Security\Core\Authorization\Voter\VoterInterface');
-        $voter->expects($this->any())
-              ->method('supportsAttribute')
-              ->will($this->returnValue($ret));
+        $voter = $this->createMock(VoterInterface::class);
+        $voter->expects($this->never())->method('vote');
 
         return $voter;
     }

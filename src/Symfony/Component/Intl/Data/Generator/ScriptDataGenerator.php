@@ -11,8 +11,8 @@
 
 namespace Symfony\Component\Intl\Data\Generator;
 
-use Symfony\Component\Intl\Data\Bundle\Reader\BundleReaderInterface;
-use Symfony\Component\Intl\Data\Bundle\Compiler\GenrbCompiler;
+use Symfony\Component\Intl\Data\Bundle\Compiler\BundleCompilerInterface;
+use Symfony\Component\Intl\Data\Bundle\Reader\BundleEntryReaderInterface;
 use Symfony\Component\Intl\Data\Util\LocaleScanner;
 
 /**
@@ -24,78 +24,63 @@ use Symfony\Component\Intl\Data\Util\LocaleScanner;
  */
 class ScriptDataGenerator extends AbstractDataGenerator
 {
+    private const DENYLIST = [
+        'Zzzz' => true, // Unknown Script
+    ];
+
     /**
-     * Collects all available language codes
+     * Collects all available language codes.
      *
      * @var string[]
      */
-    private $scriptCodes = array();
+    private array $scriptCodes = [];
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function scanLocales(LocaleScanner $scanner, $sourceDir)
+    protected function scanLocales(LocaleScanner $scanner, string $sourceDir): array
     {
         return $scanner->scanLocales($sourceDir.'/lang');
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function compileTemporaryBundles(GenrbCompiler $compiler, $sourceDir, $tempDir)
+    protected function compileTemporaryBundles(BundleCompilerInterface $compiler, string $sourceDir, string $tempDir): void
     {
         $compiler->compile($sourceDir.'/lang', $tempDir);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function preGenerate()
+    protected function preGenerate(): void
     {
-        $this->scriptCodes = array();
+        $this->scriptCodes = [];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function generateDataForLocale(BundleReaderInterface $reader, $tempDir, $displayLocale)
+    protected function generateDataForLocale(BundleEntryReaderInterface $reader, string $tempDir, string $displayLocale): ?array
     {
         $localeBundle = $reader->read($tempDir, $displayLocale);
 
         // isset() on \ResourceBundle returns true even if the value is null
         if (isset($localeBundle['Scripts']) && null !== $localeBundle['Scripts']) {
-            $data = array(
-                'Version' => $localeBundle['Version'],
-                'Names' => iterator_to_array($localeBundle['Scripts']),
-            );
+            $data = [
+                'Names' => array_diff_key(iterator_to_array($localeBundle['Scripts']), self::DENYLIST),
+            ];
 
             $this->scriptCodes = array_merge($this->scriptCodes, array_keys($data['Names']));
 
             return $data;
         }
+
+        return null;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function generateDataForRoot(BundleReaderInterface $reader, $tempDir)
+    protected function generateDataForRoot(BundleEntryReaderInterface $reader, string $tempDir): ?array
     {
+        return null;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function generateDataForMeta(BundleReaderInterface $reader, $tempDir)
+    protected function generateDataForMeta(BundleEntryReaderInterface $reader, string $tempDir): ?array
     {
-        $rootBundle = $reader->read($tempDir, 'root');
-
         $this->scriptCodes = array_unique($this->scriptCodes);
 
         sort($this->scriptCodes);
 
-        return array(
-            'Version' => $rootBundle['Version'],
+        return [
             'Scripts' => $this->scriptCodes,
-        );
+        ];
     }
 }

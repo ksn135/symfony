@@ -12,25 +12,28 @@
 namespace Symfony\Bridge\Twig\Extension;
 
 use Symfony\Component\Security\Acl\Voter\FieldVote;
-use Symfony\Component\Security\Core\SecurityContextInterface;
+use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
+use Symfony\Component\Security\Core\Exception\AuthenticationCredentialsNotFoundException;
+use Symfony\Component\Security\Http\Impersonate\ImpersonateUrlGenerator;
+use Twig\Extension\AbstractExtension;
+use Twig\TwigFunction;
 
 /**
  * SecurityExtension exposes security context features.
  *
  * @author Fabien Potencier <fabien@symfony.com>
  */
-class SecurityExtension extends \Twig_Extension
+final class SecurityExtension extends AbstractExtension
 {
-    private $context;
-
-    public function __construct(SecurityContextInterface $context = null)
-    {
-        $this->context = $context;
+    public function __construct(
+        private ?AuthorizationCheckerInterface $securityChecker = null,
+        private ?ImpersonateUrlGenerator $impersonateUrlGenerator = null,
+    ) {
     }
 
-    public function isGranted($role, $object = null, $field = null)
+    public function isGranted(mixed $role, mixed $object = null, ?string $field = null): bool
     {
-        if (null === $this->context) {
+        if (null === $this->securityChecker) {
             return false;
         }
 
@@ -38,26 +41,57 @@ class SecurityExtension extends \Twig_Extension
             $object = new FieldVote($object, $field);
         }
 
-        return $this->context->isGranted($role, $object);
+        try {
+            return $this->securityChecker->isGranted($role, $object);
+        } catch (AuthenticationCredentialsNotFoundException) {
+            return false;
+        }
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getFunctions()
+    public function getImpersonateExitUrl(?string $exitTo = null): string
     {
-        return array(
-            new \Twig_SimpleFunction('is_granted', array($this, 'isGranted')),
-        );
+        if (null === $this->impersonateUrlGenerator) {
+            return '';
+        }
+
+        return $this->impersonateUrlGenerator->generateExitUrl($exitTo);
     }
 
-    /**
-     * Returns the name of the extension.
-     *
-     * @return string The extension name
-     */
-    public function getName()
+    public function getImpersonateExitPath(?string $exitTo = null): string
     {
-        return 'security';
+        if (null === $this->impersonateUrlGenerator) {
+            return '';
+        }
+
+        return $this->impersonateUrlGenerator->generateExitPath($exitTo);
+    }
+
+    public function getImpersonateUrl(string $identifier): string
+    {
+        if (null === $this->impersonateUrlGenerator) {
+            return '';
+        }
+
+        return $this->impersonateUrlGenerator->generateImpersonationUrl($identifier);
+    }
+
+    public function getImpersonatePath(string $identifier): string
+    {
+        if (null === $this->impersonateUrlGenerator) {
+            return '';
+        }
+
+        return $this->impersonateUrlGenerator->generateImpersonationPath($identifier);
+    }
+
+    public function getFunctions(): array
+    {
+        return [
+            new TwigFunction('is_granted', $this->isGranted(...)),
+            new TwigFunction('impersonation_exit_url', $this->getImpersonateExitUrl(...)),
+            new TwigFunction('impersonation_exit_path', $this->getImpersonateExitPath(...)),
+            new TwigFunction('impersonation_url', $this->getImpersonateUrl(...)),
+            new TwigFunction('impersonation_path', $this->getImpersonatePath(...)),
+        ];
     }
 }

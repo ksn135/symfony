@@ -11,30 +11,48 @@
 
 namespace Symfony\Component\HttpKernel\Tests\Profiler;
 
-use Symfony\Component\HttpKernel\DataCollector\RequestDataCollector;
-use Symfony\Component\HttpKernel\Profiler\SqliteProfilerStorage;
-use Symfony\Component\HttpKernel\Profiler\Profiler;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\DataCollector\DataCollectorInterface;
+use Symfony\Component\HttpKernel\DataCollector\RequestDataCollector;
+use Symfony\Component\HttpKernel\Profiler\FileProfilerStorage;
+use Symfony\Component\HttpKernel\Profiler\Profiler;
 
-class ProfilerTest extends \PHPUnit_Framework_TestCase
+class ProfilerTest extends TestCase
 {
-    private $tmp;
-    private $storage;
+    private string $tmp;
+    private ?FileProfilerStorage $storage = null;
 
     public function testCollect()
     {
         $request = new Request();
         $request->query->set('foo', 'bar');
-        $response = new Response();
+        $request->server->set('REMOTE_ADDR', '127.0.0.1');
+        $response = new Response('', 204);
         $collector = new RequestDataCollector();
 
         $profiler = new Profiler($this->storage);
         $profiler->add($collector);
         $profile = $profiler->collect($request, $response);
+        $profiler->saveProfile($profile);
 
-        $profile = $profiler->loadProfile($profile->getToken());
-        $this->assertEquals(array('foo' => 'bar'), $profiler->get('request')->getRequestQuery()->all());
+        $this->assertSame(204, $profile->getStatusCode());
+        $this->assertSame('GET', $profile->getMethod());
+        $this->assertSame('bar', $profile->getCollector('request')->getRequestQuery()->all()['foo']->getValue());
+    }
+
+    public function testReset()
+    {
+        $collector = $this->getMockBuilder(DataCollectorInterface::class)
+            ->onlyMethods(['collect', 'getName', 'reset'])
+            ->getMock();
+        $collector->expects($this->any())->method('getName')->willReturn('mock');
+        $collector->expects($this->once())->method('reset');
+
+        $profiler = new Profiler($this->storage);
+        $profiler->add($collector);
+        $profiler->reset();
     }
 
     public function testFindWorksWithDates()
@@ -58,26 +76,47 @@ class ProfilerTest extends \PHPUnit_Framework_TestCase
         $this->assertCount(0, $profiler->find(null, null, null, null, 'some string', ''));
     }
 
-    protected function setUp()
+    public function testFindWorksWithStatusCode()
     {
-        if (!class_exists('Symfony\Component\HttpFoundation\Request')) {
-            $this->markTestSkipped('The "HttpFoundation" component is not available');
-        }
+        $profiler = new Profiler($this->storage);
 
-        if (!class_exists('SQLite3') && (!class_exists('PDO') || !in_array('sqlite', \PDO::getAvailableDrivers()))) {
-            $this->markTestSkipped('This test requires SQLite support in your environment');
-        }
+        $this->assertCount(0, $profiler->find(null, null, null, null, null, null, '204'));
+    }
 
-        $this->tmp = tempnam(sys_get_temp_dir(), 'sf2_profiler');
+    public function testIsInitiallyEnabled()
+    {
+        self::assertTrue((new Profiler($this->storage))->isEnabled());
+    }
+
+    public function testDisable()
+    {
+        $profiler = new Profiler($this->storage);
+        $profiler->disable();
+
+        self::assertFalse($profiler->isEnabled());
+    }
+
+    public function testEnable()
+    {
+        $profiler = new Profiler($this->storage);
+        $profiler->disable();
+        $profiler->enable();
+
+        self::assertTrue($profiler->isEnabled());
+    }
+
+    protected function setUp(): void
+    {
+        $this->tmp = tempnam(sys_get_temp_dir(), 'sf_profiler');
         if (file_exists($this->tmp)) {
             @unlink($this->tmp);
         }
 
-        $this->storage = new SqliteProfilerStorage('sqlite:'.$this->tmp);
+        $this->storage = new FileProfilerStorage('file:'.$this->tmp);
         $this->storage->purge();
     }
 
-    protected function tearDown()
+    protected function tearDown(): void
     {
         if (null !== $this->storage) {
             $this->storage->purge();

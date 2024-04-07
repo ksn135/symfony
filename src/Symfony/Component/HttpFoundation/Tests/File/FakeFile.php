@@ -15,30 +15,30 @@ use Symfony\Component\HttpFoundation\File\File as OrigFile;
 
 class FakeFile extends OrigFile
 {
-    private $realpath;
+    private string $realpath;
 
-    public function __construct($realpath, $path)
+    public function __construct(string $realpath, string $path)
     {
         $this->realpath = $realpath;
         parent::__construct($path, false);
     }
 
-    public function isReadable()
+    public function isReadable(): bool
     {
         return true;
     }
 
-    public function getRealpath()
+    public function getRealpath(): string
     {
         return $this->realpath;
     }
 
-    public function getSize()
+    public function getSize(): int
     {
         return 42;
     }
 
-    public function getMTime()
+    public function getMTime(): int
     {
         return time();
     }

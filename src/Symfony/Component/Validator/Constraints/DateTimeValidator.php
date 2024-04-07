@@ -13,37 +13,36 @@ namespace Symfony\Component\Validator\Constraints;
 
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
+use Symfony\Component\Validator\Exception\UnexpectedValueException;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
- *
- * @api
+ * @author Diego Saint Esteben <diego@saintesteben.me>
  */
 class DateTimeValidator extends DateValidator
 {
-    const PATTERN = '/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/';
-
-    /**
-     * {@inheritdoc}
-     */
-    public function validate($value, Constraint $constraint)
+    public function validate(mixed $value, Constraint $constraint): void
     {
         if (!$constraint instanceof DateTime) {
-            throw new UnexpectedTypeException($constraint, __NAMESPACE__.'\DateTime');
+            throw new UnexpectedTypeException($constraint, DateTime::class);
         }
 
-        if (null === $value || '' === $value || $value instanceof \DateTime) {
+        if (null === $value || '' === $value) {
             return;
         }
 
-        if (!is_scalar($value) && !(is_object($value) && method_exists($value, '__toString'))) {
-            throw new UnexpectedTypeException($value, 'string');
+        if (!\is_scalar($value) && !$value instanceof \Stringable) {
+            throw new UnexpectedValueException($value, 'string');
         }
 
         $value = (string) $value;
 
-        if (!preg_match(static::PATTERN, $value, $matches)) {
-            $this->buildViolation($constraint->message)
+        \DateTimeImmutable::createFromFormat($constraint->format, $value);
+
+        $errors = \DateTimeImmutable::getLastErrors() ?: ['error_count' => 0, 'warnings' => []];
+
+        if (0 < $errors['error_count']) {
+            $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ value }}', $this->formatValue($value))
                 ->setCode(DateTime::INVALID_FORMAT_ERROR)
                 ->addViolation();
@@ -51,18 +50,27 @@ class DateTimeValidator extends DateValidator
             return;
         }
 
-        if (!DateValidator::checkDate($matches[1], $matches[2], $matches[3])) {
-            $this->buildViolation($constraint->message)
-                ->setParameter('{{ value }}', $this->formatValue($value))
-                ->setCode(DateTime::INVALID_DATE_ERROR)
-                ->addViolation();
+        if (str_ends_with($constraint->format, '+')) {
+            $errors['warnings'] = array_filter($errors['warnings'], fn ($warning) => 'Trailing data' !== $warning);
         }
 
-        if (!TimeValidator::checkTime($matches[4], $matches[5], $matches[6])) {
-            $this->buildViolation($constraint->message)
-                ->setParameter('{{ value }}', $this->formatValue($value))
-                ->setCode(DateTime::INVALID_TIME_ERROR)
-                ->addViolation();
+        foreach ($errors['warnings'] as $warning) {
+            if ('The parsed date was invalid' === $warning) {
+                $this->context->buildViolation($constraint->message)
+                    ->setParameter('{{ value }}', $this->formatValue($value))
+                    ->setCode(DateTime::INVALID_DATE_ERROR)
+                    ->addViolation();
+            } elseif ('The parsed time was invalid' === $warning) {
+                $this->context->buildViolation($constraint->message)
+                    ->setParameter('{{ value }}', $this->formatValue($value))
+                    ->setCode(DateTime::INVALID_TIME_ERROR)
+                    ->addViolation();
+            } else {
+                $this->context->buildViolation($constraint->message)
+                    ->setParameter('{{ value }}', $this->formatValue($value))
+                    ->setCode(DateTime::INVALID_FORMAT_ERROR)
+                    ->addViolation();
+            }
         }
     }
 }

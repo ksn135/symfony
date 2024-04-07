@@ -11,12 +11,12 @@
 
 namespace Symfony\Component\Security\Http\Authentication;
 
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 
 /**
- * Interface for a custom authentication success handler
+ * Interface for a custom authentication success handler.
  *
  * If you want to customize the success handling process, instead of
  * overwriting the respective listener globally, you can set a custom success
@@ -27,14 +27,7 @@ use Symfony\Component\HttpFoundation\Response;
 interface AuthenticationSuccessHandlerInterface
 {
     /**
-     * This is called when an interactive authentication attempt succeeds. This
-     * is called by authentication listeners inheriting from
-     * AbstractAuthenticationListener.
-     *
-     * @param Request        $request
-     * @param TokenInterface $token
-     *
-     * @return Response never null
+     * Usually called by AuthenticatorInterface::onAuthenticationSuccess() implementations.
      */
-    public function onAuthenticationSuccess(Request $request, TokenInterface $token);
+    public function onAuthenticationSuccess(Request $request, TokenInterface $token): ?Response;
 }

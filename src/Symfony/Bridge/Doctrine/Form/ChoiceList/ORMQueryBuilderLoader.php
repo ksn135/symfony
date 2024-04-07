@@ -11,83 +11,86 @@
 
 namespace Symfony\Bridge\Doctrine\Form\ChoiceList;
 
-use Symfony\Component\Form\Exception\UnexpectedTypeException;
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Types\ConversionException;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\QueryBuilder;
-use Doctrine\DBAL\Connection;
-use Doctrine\ORM\EntityManager;
+use Symfony\Component\Form\Exception\TransformationFailedException;
 
 /**
- * Getting Entities through the ORM QueryBuilder
+ * Loads entities using a {@link QueryBuilder} instance.
+ *
+ * @author Benjamin Eberlei <kontakt@beberlei.de>
+ * @author Bernhard Schussek <bschussek@gmail.com>
  */
 class ORMQueryBuilderLoader implements EntityLoaderInterface
 {
-    /**
-     * Contains the query builder that builds the query for fetching the
-     * entities
-     *
-     * This property should only be accessed through queryBuilder.
-     *
-     * @var QueryBuilder
-     */
-    private $queryBuilder;
-
-    /**
-     * Construct an ORM Query Builder Loader
-     *
-     * @param QueryBuilder|\Closure $queryBuilder
-     * @param EntityManager         $manager
-     * @param string                $class
-     *
-     * @throws UnexpectedTypeException
-     */
-    public function __construct($queryBuilder, $manager = null, $class = null)
-    {
-        // If a query builder was passed, it must be a closure or QueryBuilder
-        // instance
-        if (!($queryBuilder instanceof QueryBuilder || $queryBuilder instanceof \Closure)) {
-            throw new UnexpectedTypeException($queryBuilder, 'Doctrine\ORM\QueryBuilder or \Closure');
-        }
-
-        if ($queryBuilder instanceof \Closure) {
-            if (!$manager instanceof EntityManager) {
-                throw new UnexpectedTypeException($manager, 'Doctrine\ORM\EntityManager');
-            }
-
-            $queryBuilder = $queryBuilder($manager->getRepository($class));
-
-            if (!$queryBuilder instanceof QueryBuilder) {
-                throw new UnexpectedTypeException($queryBuilder, 'Doctrine\ORM\QueryBuilder');
-            }
-        }
-
-        $this->queryBuilder = $queryBuilder;
+    public function __construct(
+        private readonly QueryBuilder $queryBuilder,
+    ) {
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getEntities()
+    public function getEntities(): array
     {
         return $this->queryBuilder->getQuery()->execute();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getEntitiesByIds($identifier, array $values)
+    public function getEntitiesByIds(string $identifier, array $values): array
     {
-        $qb = clone ($this->queryBuilder);
+        if (null !== $this->queryBuilder->getMaxResults() || 0 < (int) $this->queryBuilder->getFirstResult()) {
+            // an offset or a limit would apply on results including the where clause with submitted id values
+            // that could make invalid choices valid
+            $choices = [];
+            $metadata = $this->queryBuilder->getEntityManager()->getClassMetadata(current($this->queryBuilder->getRootEntities()));
+
+            foreach ($this->getEntities() as $entity) {
+                if (\in_array((string) current($metadata->getIdentifierValues($entity)), $values, true)) {
+                    $choices[] = $entity;
+                }
+            }
+
+            return $choices;
+        }
+
+        $qb = clone $this->queryBuilder;
         $alias = current($qb->getRootAliases());
         $parameter = 'ORMQueryBuilderLoader_getEntitiesByIds_'.$identifier;
+        $parameter = str_replace('.', '_', $parameter);
         $where = $qb->expr()->in($alias.'.'.$identifier, ':'.$parameter);
 
         // Guess type
         $entity = current($qb->getRootEntities());
         $metadata = $qb->getEntityManager()->getClassMetadata($entity);
-        if (in_array($metadata->getTypeOfField($identifier), array('integer', 'bigint', 'smallint'))) {
-            $parameterType = Connection::PARAM_INT_ARRAY;
+        if (\in_array($type = $metadata->getTypeOfField($identifier), ['integer', 'bigint', 'smallint'])) {
+            $parameterType = ArrayParameterType::INTEGER;
+
+            // Filter out non-integer values (e.g. ""). If we don't, some
+            // databases such as PostgreSQL fail.
+            $values = array_values(array_filter($values, fn ($v) => (string) $v === (string) (int) $v || ctype_digit($v)));
+        } elseif (\in_array($type, ['ulid', 'uuid', 'guid'])) {
+            $parameterType = ArrayParameterType::STRING;
+
+            // Like above, but we just filter out empty strings.
+            $values = array_values(array_filter($values, fn ($v) => '' !== (string) $v));
+
+            // Convert values into right type
+            if (Type::hasType($type)) {
+                $doctrineType = Type::getType($type);
+                $platform = $qb->getEntityManager()->getConnection()->getDatabasePlatform();
+                foreach ($values as &$value) {
+                    try {
+                        $value = $doctrineType->convertToDatabaseValue($value, $platform);
+                    } catch (ConversionException $e) {
+                        throw new TransformationFailedException(sprintf('Failed to transform "%s" into "%s".', $value, $type), 0, $e);
+                    }
+                }
+                unset($value);
+            }
         } else {
-            $parameterType = Connection::PARAM_STR_ARRAY;
+            $parameterType = ArrayParameterType::STRING;
+        }
+        if (!$values) {
+            return [];
         }
 
         return $qb->andWhere($where)

@@ -11,26 +11,22 @@
 
 namespace Symfony\Component\Serializer\Tests\Fixtures;
 
-use Symfony\Component\Serializer\Normalizer\NormalizableInterface;
 use Symfony\Component\Serializer\Normalizer\DenormalizableInterface;
-use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizableInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 class NormalizableTraversableDummy extends TraversableDummy implements NormalizableInterface, DenormalizableInterface
 {
-    public function normalize(NormalizerInterface $normalizer, $format = null, array $context = array())
+    public function normalize(NormalizerInterface $normalizer, ?string $format = null, array $context = []): array|string|int|float|bool
     {
-        return array(
+        return [
             'foo' => 'normalizedFoo',
             'bar' => 'normalizedBar',
-        );
+        ];
     }
 
-    public function denormalize(DenormalizerInterface $denormalizer, $data, $format = null, array $context = array())
+    public function denormalize(DenormalizerInterface $denormalizer, array|string|int|float|bool $data, ?string $format = null, array $context = []): void
     {
-        return array(
-            'foo' => 'denormalizedFoo',
-            'bar' => 'denormalizedBar',
-        );
     }
 }

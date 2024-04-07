@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Console\Output;
 
+use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Formatter\OutputFormatterInterface;
 
 /**
@@ -18,43 +19,36 @@ use Symfony\Component\Console\Formatter\OutputFormatterInterface;
  *
  * Usage:
  *
- * $output = new StreamOutput(fopen('php://stdout', 'w'));
+ *     $output = new StreamOutput(fopen('php://stdout', 'w'));
  *
  * As `StreamOutput` can use any stream, you can also use a file:
  *
- * $output = new StreamOutput(fopen('/path/to/output.log', 'a', false));
+ *     $output = new StreamOutput(fopen('/path/to/output.log', 'a', false));
  *
  * @author Fabien Potencier <fabien@symfony.com>
- *
- * @api
  */
 class StreamOutput extends Output
 {
+    /** @var resource */
     private $stream;
 
     /**
-     * Constructor.
-     *
-     * @param mixed                         $stream    A stream resource
+     * @param resource                      $stream    A stream resource
      * @param int                           $verbosity The verbosity level (one of the VERBOSITY constants in OutputInterface)
      * @param bool|null                     $decorated Whether to decorate messages (null for auto-guessing)
      * @param OutputFormatterInterface|null $formatter Output formatter instance (null to use default OutputFormatter)
      *
-     * @throws \InvalidArgumentException When first argument is not a real stream
-     *
-     * @api
+     * @throws InvalidArgumentException When first argument is not a real stream
      */
-    public function __construct($stream, $verbosity = self::VERBOSITY_NORMAL, $decorated = null, OutputFormatterInterface $formatter = null)
+    public function __construct($stream, int $verbosity = self::VERBOSITY_NORMAL, ?bool $decorated = null, ?OutputFormatterInterface $formatter = null)
     {
-        if (!is_resource($stream) || 'stream' !== get_resource_type($stream)) {
-            throw new \InvalidArgumentException('The StreamOutput class needs a stream as its first argument.');
+        if (!\is_resource($stream) || 'stream' !== get_resource_type($stream)) {
+            throw new InvalidArgumentException('The StreamOutput class needs a stream as its first argument.');
         }
 
         $this->stream = $stream;
 
-        if (null === $decorated) {
-            $decorated = $this->hasColorSupport();
-        }
+        $decorated ??= $this->hasColorSupport();
 
         parent::__construct($verbosity, $decorated, $formatter);
     }
@@ -62,22 +56,20 @@ class StreamOutput extends Output
     /**
      * Gets the stream attached to this StreamOutput instance.
      *
-     * @return resource A stream resource
+     * @return resource
      */
     public function getStream()
     {
         return $this->stream;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function doWrite($message, $newline)
+    protected function doWrite(string $message, bool $newline): void
     {
-        if (false === @fwrite($this->stream, $message.($newline ? PHP_EOL : ''))) {
-            // should never happen
-            throw new \RuntimeException('Unable to write output.');
+        if ($newline) {
+            $message .= \PHP_EOL;
         }
+
+        @fwrite($this->stream, $message);
 
         fflush($this->stream);
     }
@@ -87,17 +79,44 @@ class StreamOutput extends Output
      *
      * Colorization is disabled if not supported by the stream:
      *
-     *  -  Windows without Ansicon and ConEmu
-     *  -  non tty consoles
+     * This is tricky on Windows, because Cygwin, Msys2 etc emulate pseudo
+     * terminals via named pipes, so we can only check the environment.
      *
-     * @return bool    true if the stream supports colorization, false otherwise
+     * Reference: Composer\XdebugHandler\Process::supportsColor
+     * https://github.com/composer/xdebug-handler
+     *
+     * @return bool true if the stream supports colorization, false otherwise
      */
-    protected function hasColorSupport()
+    protected function hasColorSupport(): bool
     {
-        if (DIRECTORY_SEPARATOR == '\\') {
-            return false !== getenv('ANSICON') || 'ON' === getenv('ConEmuANSI');
+        // Follow https://no-color.org/
+        if (isset($_SERVER['NO_COLOR']) || false !== getenv('NO_COLOR')) {
+            return false;
         }
 
-        return function_exists('posix_isatty') && @posix_isatty($this->stream);
+        // Detect msysgit/mingw and assume this is a tty because detection
+        // does not work correctly, see https://github.com/composer/composer/issues/9690
+        if (!@stream_isatty($this->stream) && !\in_array(strtoupper((string) getenv('MSYSTEM')), ['MINGW32', 'MINGW64'], true)) {
+            return false;
+        }
+
+        if ('\\' === \DIRECTORY_SEPARATOR && @sapi_windows_vt100_support($this->stream)) {
+            return true;
+        }
+
+        if ('Hyper' === getenv('TERM_PROGRAM')
+            || false !== getenv('COLORTERM')
+            || false !== getenv('ANSICON')
+            || 'ON' === getenv('ConEmuANSI')
+        ) {
+            return true;
+        }
+
+        if ('dumb' === $term = (string) getenv('TERM')) {
+            return false;
+        }
+
+        // See https://github.com/chalk/supports-color/blob/d4f413efaf8da045c5ab440ed418ef02dbb28bf1/index.js#L157
+        return preg_match('/^((screen|xterm|vt100|vt220|putty|rxvt|ansi|cygwin|linux).*)|(.*-256(color)?(-bce)?)$/', $term);
     }
 }

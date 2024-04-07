@@ -29,43 +29,56 @@ use Symfony\Component\Validator\Exception\ValidatorException;
 class PropertyMetadata extends MemberMetadata
 {
     /**
-     * Constructor.
-     *
      * @param string $class The class this property is defined on
      * @param string $name  The name of this property
      *
      * @throws ValidatorException
      */
-    public function __construct($class, $name)
+    public function __construct(string $class, string $name)
     {
         if (!property_exists($class, $name)) {
-            throw new ValidatorException(sprintf('Property %s does not exist in class %s', $name, $class));
+            throw new ValidatorException(sprintf('Property "%s" does not exist in class "%s".', $name, $class));
         }
 
         parent::__construct($class, $name, $name);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function getPropertyValue($object)
+    public function getPropertyValue(mixed $object): mixed
     {
-        return $this->getReflectionMember($object)->getValue($object);
-    }
+        $reflProperty = $this->getReflectionMember($object);
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function newReflectionMember($objectOrClassName)
-    {
-        $class = new \ReflectionClass($objectOrClassName);
-        while (!$class->hasProperty($this->getName())) {
-            $class = $class->getParentClass();
+        if ($reflProperty->hasType() && !$reflProperty->isInitialized($object)) {
+            // There is no way to check if a property has been unset or if it is uninitialized.
+            // When trying to access an uninitialized property, __get method is triggered.
+
+            // If __get method is not present, no fallback is possible
+            // Otherwise we need to catch an Error in case we are trying to access an uninitialized but set property.
+            if (!method_exists($object, '__get')) {
+                return null;
+            }
+
+            try {
+                return $reflProperty->getValue($object);
+            } catch (\Error) {
+                return null;
+            }
         }
 
-        $member = new \ReflectionProperty($class->getName(), $this->getName());
-        $member->setAccessible(true);
+        return $reflProperty->getValue($object);
+    }
 
-        return $member;
+    protected function newReflectionMember(object|string $objectOrClassName): \ReflectionMethod|\ReflectionProperty
+    {
+        $originalClass = \is_string($objectOrClassName) ? $objectOrClassName : $objectOrClassName::class;
+
+        while (!property_exists($objectOrClassName, $this->getName())) {
+            $objectOrClassName = get_parent_class($objectOrClassName);
+
+            if (false === $objectOrClassName) {
+                throw new ValidatorException(sprintf('Property "%s" does not exist in class "%s".', $this->getName(), $originalClass));
+            }
+        }
+
+        return new \ReflectionProperty($objectOrClassName, $this->getName());
     }
 }

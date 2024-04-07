@@ -25,9 +25,9 @@ abstract class FilesLoader extends BaseFilesLoader
         parent::__construct($paths);
     }
 
-    protected function getFileLoaderInstance($file)
+    protected function getFileLoaderInstance(string $file): LoaderInterface
     {
-        $this->timesCalled++;
+        ++$this->timesCalled;
 
         return $this->loader;
     }

@@ -11,22 +11,28 @@
 
 namespace Symfony\Bridge\Monolog\Tests\Handler;
 
+use Monolog\Level;
 use Monolog\Logger;
+use PHPUnit\Framework\TestCase;
+use Symfony\Bridge\Monolog\Formatter\ConsoleFormatter;
 use Symfony\Bridge\Monolog\Handler\ConsoleHandler;
+use Symfony\Bridge\Monolog\Tests\RecordFactory;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
 use Symfony\Component\Console\Event\ConsoleTerminateEvent;
-use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\Output;
+use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
-use Symfony\Component\Console\Command\Command;
 
 /**
  * Tests the ConsoleHandler and also the ConsoleFormatter.
  *
  * @author Tobias Schultze <http://tobion.de>
  */
-class ConsoleHandlerTest extends \PHPUnit_Framework_TestCase
+class ConsoleHandlerTest extends TestCase
 {
     public function testConstructor()
     {
@@ -37,65 +43,84 @@ class ConsoleHandlerTest extends \PHPUnit_Framework_TestCase
     public function testIsHandling()
     {
         $handler = new ConsoleHandler();
-        $this->assertFalse($handler->isHandling(array()), '->isHandling returns false when no output is set');
+        $this->assertFalse($handler->isHandling(RecordFactory::create()), '->isHandling returns false when no output is set');
     }
 
     /**
      * @dataProvider provideVerbosityMappingTests
      */
-    public function testVerbosityMapping($verbosity, $level, $isHandling, array $map = array())
+    public function testVerbosityMapping($verbosity, $level, $isHandling, array $map = [])
     {
-        $output = $this->getMock('Symfony\Component\Console\Output\OutputInterface');
+        $output = $this->createMock(OutputInterface::class);
         $output
             ->expects($this->atLeastOnce())
             ->method('getVerbosity')
-            ->will($this->returnValue($verbosity))
+            ->willReturn($verbosity)
         ;
         $handler = new ConsoleHandler($output, true, $map);
-        $this->assertSame($isHandling, $handler->isHandling(array('level' => $level)),
+        $this->assertSame($isHandling, $handler->isHandling(RecordFactory::create($level)),
             '->isHandling returns correct value depending on console verbosity and log level'
         );
+
+        // check that the handler actually outputs the record if it handles it
+        $levelName = Logger::getLevelName($level);
+        $levelName = sprintf('%-9s', $levelName);
+
+        $realOutput = $this->getMockBuilder(Output::class)->onlyMethods(['doWrite'])->getMock();
+        $realOutput->setVerbosity($verbosity);
+        if ($realOutput->isDebug()) {
+            $log = "16:21:54 $levelName [app] My info message\n";
+        } else {
+            $log = "16:21:54 $levelName [app] My info message\n";
+        }
+        $realOutput
+            ->expects($isHandling ? $this->once() : $this->never())
+            ->method('doWrite')
+            ->with($log, false);
+        $handler = new ConsoleHandler($realOutput, true, $map);
+
+        $infoRecord = RecordFactory::create($level, 'My info message', 'app', datetime: new \DateTimeImmutable('2013-05-29 16:21:54'));
+        $this->assertFalse($handler->handle($infoRecord), 'The handler finished handling the log.');
     }
 
-    public function provideVerbosityMappingTests()
+    public static function provideVerbosityMappingTests(): array
     {
-        return array(
-            array(OutputInterface::VERBOSITY_QUIET, Logger::ERROR, false),
-            array(OutputInterface::VERBOSITY_NORMAL, Logger::WARNING, true),
-            array(OutputInterface::VERBOSITY_NORMAL, Logger::NOTICE, false),
-            array(OutputInterface::VERBOSITY_VERBOSE, Logger::NOTICE, true),
-            array(OutputInterface::VERBOSITY_VERBOSE, Logger::INFO, false),
-            array(OutputInterface::VERBOSITY_VERY_VERBOSE, Logger::INFO, true),
-            array(OutputInterface::VERBOSITY_VERY_VERBOSE, Logger::DEBUG, false),
-            array(OutputInterface::VERBOSITY_DEBUG, Logger::DEBUG, true),
-            array(OutputInterface::VERBOSITY_DEBUG, Logger::EMERGENCY, true),
-            array(OutputInterface::VERBOSITY_NORMAL, Logger::NOTICE, true, array(
-                OutputInterface::VERBOSITY_NORMAL => Logger::NOTICE,
-            )),
-            array(OutputInterface::VERBOSITY_DEBUG, Logger::NOTICE, true, array(
-                OutputInterface::VERBOSITY_NORMAL => Logger::NOTICE,
-            )),
-        );
+        return [
+            [OutputInterface::VERBOSITY_QUIET, Level::Error, true],
+            [OutputInterface::VERBOSITY_QUIET, Level::Warning, false],
+            [OutputInterface::VERBOSITY_NORMAL, Level::Warning, true],
+            [OutputInterface::VERBOSITY_NORMAL, Level::Notice, false],
+            [OutputInterface::VERBOSITY_VERBOSE, Level::Notice, true],
+            [OutputInterface::VERBOSITY_VERBOSE, Level::Info, false],
+            [OutputInterface::VERBOSITY_VERY_VERBOSE, Level::Info, true],
+            [OutputInterface::VERBOSITY_VERY_VERBOSE, Level::Debug, false],
+            [OutputInterface::VERBOSITY_DEBUG, Level::Debug, true],
+            [OutputInterface::VERBOSITY_DEBUG, Level::Emergency, true],
+            [OutputInterface::VERBOSITY_NORMAL, Level::Notice, true, [
+                OutputInterface::VERBOSITY_NORMAL => Level::Notice,
+            ]],
+            [OutputInterface::VERBOSITY_DEBUG, Level::Notice, true, [
+                OutputInterface::VERBOSITY_NORMAL => Level::Notice,
+            ]],
+        ];
     }
 
     public function testVerbosityChanged()
     {
-        $output = $this->getMock('Symfony\Component\Console\Output\OutputInterface');
+        $output = $this->createMock(OutputInterface::class);
         $output
-            ->expects($this->at(0))
+            ->expects($this->exactly(2))
             ->method('getVerbosity')
-            ->will($this->returnValue(OutputInterface::VERBOSITY_QUIET))
-        ;
-        $output
-            ->expects($this->at(1))
-            ->method('getVerbosity')
-            ->will($this->returnValue(OutputInterface::VERBOSITY_DEBUG))
+            ->willReturnOnConsecutiveCalls(
+                OutputInterface::VERBOSITY_QUIET,
+                OutputInterface::VERBOSITY_DEBUG
+            )
         ;
         $handler = new ConsoleHandler($output);
-        $this->assertFalse($handler->isHandling(array('level' => Logger::NOTICE)),
+        $this->assertFalse($handler->isHandling(RecordFactory::create(Level::Notice)),
             'when verbosity is set to quiet, the handler does not handle the log'
         );
-        $this->assertTrue($handler->isHandling(array('level' => Logger::NOTICE)),
+        $this->assertTrue($handler->isHandling(RecordFactory::create(Level::Notice)),
             'since the verbosity of the output increased externally, the handler is now handling the log'
         );
     }
@@ -103,64 +128,32 @@ class ConsoleHandlerTest extends \PHPUnit_Framework_TestCase
     public function testGetFormatter()
     {
         $handler = new ConsoleHandler();
-        $this->assertInstanceOf('Symfony\Bridge\Monolog\Formatter\ConsoleFormatter', $handler->getFormatter(),
-            '-getFormatter returns ConsoleFormatter by default'
+        $this->assertInstanceOf(
+            ConsoleFormatter::class, $handler->getFormatter(),
+            '->getFormatter returns ConsoleFormatter by default'
         );
     }
 
     public function testWritingAndFormatting()
     {
-        $output = $this->getMock('Symfony\Component\Console\Output\ConsoleOutputInterface');
+        $output = $this->createMock(OutputInterface::class);
         $output
             ->expects($this->any())
             ->method('getVerbosity')
-            ->will($this->returnValue(OutputInterface::VERBOSITY_DEBUG))
+            ->willReturn(OutputInterface::VERBOSITY_DEBUG)
         ;
         $output
             ->expects($this->once())
             ->method('write')
-            ->with('<info>[2013-05-29 16:21:54] app.INFO:</info> My info message  '."\n")
-        ;
-
-        $errorOutput = $this->getMock('Symfony\Component\Console\Output\OutputInterface');
-        $errorOutput
-            ->expects($this->once())
-            ->method('write')
-            ->with('<error>[2013-05-29 16:21:54] app.ERROR:</error> My error message  '."\n")
-        ;
-
-        $output
-            ->expects($this->any())
-            ->method('getErrorOutput')
-            ->will($this->returnValue($errorOutput))
+            ->with("16:21:54 <fg=green>INFO     </> <comment>[app]</> My info message\n")
         ;
 
         $handler = new ConsoleHandler(null, false);
         $handler->setOutput($output);
 
-        $infoRecord = array(
-            'message' => 'My info message',
-            'context' => array(),
-            'level' => Logger::INFO,
-            'level_name' => Logger::getLevelName(Logger::INFO),
-            'channel' => 'app',
-            'datetime' => new \DateTime('2013-05-29 16:21:54'),
-            'extra' => array(),
-        );
+        $infoRecord = RecordFactory::create(Level::Info, 'My info message', 'app', datetime: new \DateTimeImmutable('2013-05-29 16:21:54'));
 
         $this->assertTrue($handler->handle($infoRecord), 'The handler finished handling the log as bubble is false.');
-
-        $errorRecord = array(
-            'message' => 'My error message',
-            'context' => array(),
-            'level' => Logger::ERROR,
-            'level_name' => Logger::getLevelName(Logger::ERROR),
-            'channel' => 'app',
-            'datetime' => new \DateTime('2013-05-29 16:21:54'),
-            'extra' => array(),
-        );
-
-        $this->assertTrue($handler->handle($errorRecord), 'The handler finished handling the log as bubble is false.');
     }
 
     public function testLogsFromListeners()
@@ -175,29 +168,29 @@ class ConsoleHandlerTest extends \PHPUnit_Framework_TestCase
 
         $dispatcher = new EventDispatcher();
         $dispatcher->addListener(ConsoleEvents::COMMAND, function () use ($logger) {
-            $logger->addInfo('Before command message.');
+            $logger->info('Before command message.');
         });
         $dispatcher->addListener(ConsoleEvents::TERMINATE, function () use ($logger) {
-            $logger->addInfo('Before terminate message.');
+            $logger->info('Before terminate message.');
         });
 
         $dispatcher->addSubscriber($handler);
 
         $dispatcher->addListener(ConsoleEvents::COMMAND, function () use ($logger) {
-            $logger->addInfo('After command message.');
+            $logger->info('After command message.');
         });
         $dispatcher->addListener(ConsoleEvents::TERMINATE, function () use ($logger) {
-            $logger->addInfo('After terminate message.');
+            $logger->info('After terminate message.');
         });
 
-        $event = new ConsoleCommandEvent(new Command('foo'), $this->getMock('Symfony\Component\Console\Input\InputInterface'), $output);
-        $dispatcher->dispatch(ConsoleEvents::COMMAND, $event);
-        $this->assertContains('Before command message.', $out = $output->fetch());
-        $this->assertContains('After command message.', $out);
+        $event = new ConsoleCommandEvent(new Command('foo'), $this->createMock(InputInterface::class), $output);
+        $dispatcher->dispatch($event, ConsoleEvents::COMMAND);
+        $this->assertStringContainsString('Before command message.', $out = $output->fetch());
+        $this->assertStringContainsString('After command message.', $out);
 
-        $event = new ConsoleTerminateEvent(new Command('foo'), $this->getMock('Symfony\Component\Console\Input\InputInterface'), $output, 0);
-        $dispatcher->dispatch(ConsoleEvents::TERMINATE, $event);
-        $this->assertContains('Before terminate message.', $out = $output->fetch());
-        $this->assertContains('After terminate message.', $out);
+        $event = new ConsoleTerminateEvent(new Command('foo'), $this->createMock(InputInterface::class), $output, 0);
+        $dispatcher->dispatch($event, ConsoleEvents::TERMINATE);
+        $this->assertStringContainsString('Before terminate message.', $out = $output->fetch());
+        $this->assertStringContainsString('After terminate message.', $out);
     }
 }

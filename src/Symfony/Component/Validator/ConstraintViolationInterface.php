@@ -19,11 +19,9 @@ namespace Symfony\Component\Validator;
  * element in the validation graph and the root element that was originally
  * passed to the validator. For example, take the following graph:
  *
- * <pre>
- * (Person)---(firstName: string)
- *      \
- *   (address: Address)---(street: string)
- * </pre>
+ *     (Person)---(firstName: string)
+ *          \
+ *       (address: Address)---(street: string)
  *
  * If the <tt>Person</tt> object is validated and validation fails for the
  * "firstName" property, the generated violation has the <tt>Person</tt>
@@ -32,44 +30,32 @@ namespace Symfony\Component\Validator;
  * element is still the person, but the property path is "address.street".
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
- *
- * @api
  */
 interface ConstraintViolationInterface
 {
     /**
      * Returns the violation message.
-     *
-     * @return string The violation message.
-     *
-     * @api
      */
-    public function getMessage();
+    public function getMessage(): string|\Stringable;
 
     /**
      * Returns the raw violation message.
      *
      * The raw violation message contains placeholders for the parameters
-     * returned by {@link getMessageParameters}. Typically you'll pass the
+     * returned by {@link getParameters}. Typically you'll pass the
      * message template and parameters to a translation engine.
-     *
-     * @return string The raw violation message.
-     *
-     * @api
      */
-    public function getMessageTemplate();
+    public function getMessageTemplate(): string;
 
     /**
      * Returns the parameters to be inserted into the raw violation message.
      *
-     * @return array A possibly empty list of parameters indexed by the names
-     *               that appear in the message template.
+     * @return array a possibly empty list of parameters indexed by the names
+     *               that appear in the message template
      *
-     * @see getMessageTemplate
-     *
-     * @api
+     * @see getMessageTemplate()
      */
-    public function getMessageParameters();
+    public function getParameters(): array;
 
     /**
      * Returns a number for pluralizing the violation message.
@@ -84,10 +70,8 @@ interface ConstraintViolationInterface
      *
      * This method returns the value of the parameter for choosing the right
      * pluralization form (in this case "choices").
-     *
-     * @return int|null     The number to use to pluralize of the message.
      */
-    public function getMessagePluralization();
+    public function getPlural(): ?int;
 
     /**
      * Returns the root element of the validation.
@@ -96,10 +80,8 @@ interface ConstraintViolationInterface
      *               the validation was started. Because the validator traverses
      *               the object graph, the value at which the violation occurs
      *               is not necessarily the value that was originally validated.
-     *
-     * @api
      */
-    public function getRoot();
+    public function getRoot(): mixed;
 
     /**
      * Returns the property path from the root element to the violation.
@@ -112,25 +94,34 @@ interface ConstraintViolationInterface
      *                path is "address.street". Property access is denoted by
      *                dots, while array access is denoted by square brackets,
      *                for example "addresses[1].street".
-     *
-     * @api
      */
-    public function getPropertyPath();
+    public function getPropertyPath(): string;
 
     /**
      * Returns the value that caused the violation.
      *
-     * @return mixed The invalid value that caused the validated constraint to
-     *               fail.
-     *
-     * @api
+     * @return mixed the invalid value that caused the validated constraint to
+     *               fail
      */
-    public function getInvalidValue();
+    public function getInvalidValue(): mixed;
 
     /**
      * Returns a machine-digestible error code for the violation.
-     *
-     * @return mixed The error code.
      */
-    public function getCode();
+    public function getCode(): ?string;
+
+    /**
+     * Returns the constraint whose validation caused the violation.
+     */
+    public function getConstraint(): ?Constraint;
+
+    /**
+     * Returns the cause of the violation.
+     */
+    public function getCause(): mixed;
+
+    /**
+     * Converts the violation into a string for debugging purposes.
+     */
+    public function __toString(): string;
 }

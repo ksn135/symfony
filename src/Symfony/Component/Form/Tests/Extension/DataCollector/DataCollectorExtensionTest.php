@@ -11,35 +11,27 @@
 
 namespace Symfony\Component\Form\Tests\Extension\DataCollector;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Form\Extension\DataCollector\DataCollectorExtension;
+use Symfony\Component\Form\Extension\DataCollector\FormDataCollector;
+use Symfony\Component\Form\Extension\DataCollector\FormDataExtractor;
+use Symfony\Component\Form\Extension\DataCollector\Type\DataCollectorTypeExtension;
 
-/**
- * @covers Symfony\Component\Form\Extension\DataCollector\DataCollectorExtension
- */
-class DataCollectorExtensionTest extends \PHPUnit_Framework_TestCase
+class DataCollectorExtensionTest extends TestCase
 {
-    /**
-     * @var DataCollectorExtension
-     */
-    private $extension;
+    private DataCollectorExtension $extension;
 
-    /**
-     * @var \PHPUnit_Framework_MockObject_MockObject
-     */
-    private $dataCollector;
-
-    public function setUp()
+    protected function setUp(): void
     {
-        $this->dataCollector = $this->getMock('Symfony\Component\Form\Extension\DataCollector\FormDataCollectorInterface');
-        $this->extension = new DataCollectorExtension($this->dataCollector);
+        $this->extension = new DataCollectorExtension(new FormDataCollector(new FormDataExtractor()));
     }
 
     public function testLoadTypeExtensions()
     {
-        $typeExtensions = $this->extension->getTypeExtensions('form');
+        $typeExtensions = $this->extension->getTypeExtensions('Symfony\Component\Form\Extension\Core\Type\FormType');
 
-        $this->assertInternalType('array', $typeExtensions);
+        $this->assertIsArray($typeExtensions);
         $this->assertCount(1, $typeExtensions);
-        $this->assertInstanceOf('Symfony\Component\Form\Extension\DataCollector\Type\DataCollectorTypeExtension', array_shift($typeExtensions));
+        $this->assertInstanceOf(DataCollectorTypeExtension::class, array_shift($typeExtensions));
     }
 }

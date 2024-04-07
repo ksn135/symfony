@@ -20,47 +20,44 @@ use Symfony\Component\Form\Exception\UnexpectedTypeException;
  *
  * @author Bernhard Schussek <bschussek@gmail.com>
  * @author Florian Eckerstorfer <florian@eckerstorfer.org>
+ *
+ * @implements DataTransformerInterface<int|float, string>
  */
 class PercentToLocalizedStringTransformer implements DataTransformerInterface
 {
-    const FRACTIONAL = 'fractional';
-    const INTEGER = 'integer';
+    public const FRACTIONAL = 'fractional';
+    public const INTEGER = 'integer';
 
-    protected static $types = array(
+    protected static array $types = [
         self::FRACTIONAL,
         self::INTEGER,
-    );
+    ];
 
-    private $type;
-
-    private $precision;
+    private string $type;
+    private int $scale;
 
     /**
-     * Constructor.
-     *
      * @see self::$types for a list of supported types
      *
-     * @param int    $precision The precision
-     * @param string $type      One of the supported types
+     * @param int  $roundingMode A value from \NumberFormatter, such as \NumberFormatter::ROUND_HALFUP
+     * @param bool $html5Format  Use an HTML5 specific format, see https://www.w3.org/TR/html51/sec-forms.html#date-time-and-number-formats
      *
      * @throws UnexpectedTypeException if the given value of type is unknown
      */
-    public function __construct($precision = null, $type = null)
-    {
-        if (null === $precision) {
-            $precision = 0;
-        }
+    public function __construct(
+        ?int $scale = null,
+        ?string $type = null,
+        private int $roundingMode = \NumberFormatter::ROUND_HALFUP,
+        private bool $html5Format = false,
+    ) {
+        $type ??= self::FRACTIONAL;
 
-        if (null === $type) {
-            $type = self::FRACTIONAL;
-        }
-
-        if (!in_array($type, self::$types, true)) {
+        if (!\in_array($type, self::$types, true)) {
             throw new UnexpectedTypeException($type, implode('", "', self::$types));
         }
 
         $this->type = $type;
-        $this->precision = $precision;
+        $this->scale = $scale ?? 0;
     }
 
     /**
@@ -68,12 +65,10 @@ class PercentToLocalizedStringTransformer implements DataTransformerInterface
      *
      * @param int|float $value Normalized value
      *
-     * @return string Percentage value
-     *
-     * @throws TransformationFailedException If the given value is not numeric or
-     *                                       if the value could not be transformed.
+     * @throws TransformationFailedException if the given value is not numeric or
+     *                                       if the value could not be transformed
      */
-    public function transform($value)
+    public function transform(mixed $value): string
     {
         if (null === $value) {
             return '';
@@ -101,49 +96,122 @@ class PercentToLocalizedStringTransformer implements DataTransformerInterface
     /**
      * Transforms between a percentage value into a normalized format (integer or float).
      *
-     * @param string $value Percentage value.
+     * @param string $value Percentage value
      *
-     * @return int|float Normalized value.
-     *
-     * @throws TransformationFailedException If the given value is not a string or
-     *                                       if the value could not be transformed.
+     * @throws TransformationFailedException if the given value is not a string or
+     *                                       if the value could not be transformed
      */
-    public function reverseTransform($value)
+    public function reverseTransform(mixed $value): int|float|null
     {
-        if (!is_string($value)) {
+        if (!\is_string($value)) {
             throw new TransformationFailedException('Expected a string.');
         }
 
         if ('' === $value) {
-            return;
+            return null;
         }
 
+        $position = 0;
         $formatter = $this->getNumberFormatter();
+        $groupSep = $formatter->getSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
+        $decSep = $formatter->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
+        $grouping = $formatter->getAttribute(\NumberFormatter::GROUPING_USED);
+
+        if ('.' !== $decSep && (!$grouping || '.' !== $groupSep)) {
+            $value = str_replace('.', $decSep, $value);
+        }
+
+        if (',' !== $decSep && (!$grouping || ',' !== $groupSep)) {
+            $value = str_replace(',', $decSep, $value);
+        }
+
+        if (str_contains($value, $decSep)) {
+            $type = \NumberFormatter::TYPE_DOUBLE;
+        } else {
+            $type = \PHP_INT_SIZE === 8 ? \NumberFormatter::TYPE_INT64 : \NumberFormatter::TYPE_INT32;
+        }
+
         // replace normal spaces so that the formatter can read them
-        $value = $formatter->parse(str_replace(' ', ' ', $value));
+        $result = $formatter->parse(str_replace(' ', "\xc2\xa0", $value), $type, $position);
 
         if (intl_is_failure($formatter->getErrorCode())) {
             throw new TransformationFailedException($formatter->getErrorMessage());
         }
 
         if (self::FRACTIONAL == $this->type) {
-            $value /= 100;
+            $result /= 100;
         }
 
-        return $value;
+        if (\function_exists('mb_detect_encoding') && false !== $encoding = mb_detect_encoding($value, null, true)) {
+            $length = mb_strlen($value, $encoding);
+            $remainder = mb_substr($value, $position, $length, $encoding);
+        } else {
+            $length = \strlen($value);
+            $remainder = substr($value, $position, $length);
+        }
+
+        // After parsing, position holds the index of the character where the
+        // parsing stopped
+        if ($position < $length) {
+            // Check if there are unrecognized characters at the end of the
+            // number (excluding whitespace characters)
+            $remainder = trim($remainder, " \t\n\r\0\x0b\xc2\xa0");
+
+            if ('' !== $remainder) {
+                throw new TransformationFailedException(sprintf('The number contains unrecognized characters: "%s".', $remainder));
+            }
+        }
+
+        return $this->round($result);
     }
 
     /**
-     * Returns a preconfigured \NumberFormatter instance
-     *
-     * @return \NumberFormatter
+     * Returns a preconfigured \NumberFormatter instance.
      */
-    protected function getNumberFormatter()
+    protected function getNumberFormatter(): \NumberFormatter
     {
-        $formatter = new \NumberFormatter(\Locale::getDefault(), \NumberFormatter::DECIMAL);
+        // Values used in HTML5 number inputs should be formatted as in "1234.5", ie. 'en' format without grouping,
+        // according to https://www.w3.org/TR/html51/sec-forms.html#date-time-and-number-formats
+        $formatter = new \NumberFormatter($this->html5Format ? 'en' : \Locale::getDefault(), \NumberFormatter::DECIMAL);
 
-        $formatter->setAttribute(\NumberFormatter::FRACTION_DIGITS, $this->precision);
+        if ($this->html5Format) {
+            $formatter->setAttribute(\NumberFormatter::GROUPING_USED, 0);
+        }
+
+        $formatter->setAttribute(\NumberFormatter::FRACTION_DIGITS, $this->scale);
+
+        $formatter->setAttribute(\NumberFormatter::ROUNDING_MODE, $this->roundingMode);
 
         return $formatter;
+    }
+
+    /**
+     * Rounds a number according to the configured scale and rounding mode.
+     */
+    private function round(int|float $number): int|float
+    {
+        // shift number to maintain the correct scale during rounding
+        $roundingCoef = 10 ** $this->scale;
+
+        if (self::FRACTIONAL === $this->type) {
+            $roundingCoef *= 100;
+        }
+
+        // string representation to avoid rounding errors, similar to bcmul()
+        $number = (string) ($number * $roundingCoef);
+
+        $number = match ($this->roundingMode) {
+            \NumberFormatter::ROUND_CEILING => ceil($number),
+            \NumberFormatter::ROUND_FLOOR => floor($number),
+            \NumberFormatter::ROUND_UP => $number > 0 ? ceil($number) : floor($number),
+            \NumberFormatter::ROUND_DOWN => $number > 0 ? floor($number) : ceil($number),
+            \NumberFormatter::ROUND_HALFEVEN => round($number, 0, \PHP_ROUND_HALF_EVEN),
+            \NumberFormatter::ROUND_HALFUP => round($number, 0, \PHP_ROUND_HALF_UP),
+            \NumberFormatter::ROUND_HALFDOWN => round($number, 0, \PHP_ROUND_HALF_DOWN),
+        };
+
+        $number = 1 === $roundingCoef ? (int) $number : $number / $roundingCoef;
+
+        return $number;
     }
 }

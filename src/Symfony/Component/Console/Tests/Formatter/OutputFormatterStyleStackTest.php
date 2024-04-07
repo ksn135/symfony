@@ -11,10 +11,11 @@
 
 namespace Symfony\Component\Console\Tests\Formatter;
 
-use Symfony\Component\Console\Formatter\OutputFormatterStyleStack;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Formatter\OutputFormatterStyle;
+use Symfony\Component\Console\Formatter\OutputFormatterStyleStack;
 
-class OutputFormatterStyleStackTest extends \PHPUnit_Framework_TestCase
+class OutputFormatterStyleStackTest extends TestCase
 {
     public function testPush()
     {
@@ -58,13 +59,13 @@ class OutputFormatterStyleStackTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($s1, $stack->pop());
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
     public function testInvalidPop()
     {
         $stack = new OutputFormatterStyleStack();
         $stack->push(new OutputFormatterStyle('white', 'black'));
+
+        $this->expectException(\InvalidArgumentException::class);
+
         $stack->pop(new OutputFormatterStyle('yellow', 'blue'));
     }
 }

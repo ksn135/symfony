@@ -11,20 +11,21 @@
 
 namespace Symfony\Component\HttpKernel\Tests\HttpCache;
 
-use Symfony\Component\HttpKernel\HttpKernel;
-use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Controller\ArgumentResolverInterface;
 use Symfony\Component\HttpKernel\Controller\ControllerResolverInterface;
-use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\HttpKernel\HttpKernel;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 
-class TestMultipleHttpKernel extends HttpKernel implements ControllerResolverInterface
+class TestMultipleHttpKernel extends HttpKernel implements ControllerResolverInterface, ArgumentResolverInterface
 {
-    protected $bodies = array();
-    protected $statuses = array();
-    protected $headers = array();
-    protected $call = false;
-    protected $backendRequest;
+    protected array $bodies = [];
+    protected array $statuses = [];
+    protected array $headers = [];
+    protected bool $called = false;
+    protected Request $backendRequest;
 
     public function __construct($responses)
     {
@@ -34,7 +35,7 @@ class TestMultipleHttpKernel extends HttpKernel implements ControllerResolverInt
             $this->headers[] = $response['headers'];
         }
 
-        parent::__construct(new EventDispatcher(), $this);
+        parent::__construct(new EventDispatcher(), $this, null, $this);
     }
 
     public function getBackendRequest()
@@ -42,21 +43,21 @@ class TestMultipleHttpKernel extends HttpKernel implements ControllerResolverInt
         return $this->backendRequest;
     }
 
-    public function handle(Request $request, $type = HttpKernelInterface::MASTER_REQUEST, $catch = false)
+    public function handle(Request $request, $type = HttpKernelInterface::MAIN_REQUEST, $catch = false): Response
     {
         $this->backendRequest = $request;
 
         return parent::handle($request, $type, $catch);
     }
 
-    public function getController(Request $request)
+    public function getController(Request $request): callable|false
     {
-        return array($this, 'callController');
+        return $this->callController(...);
     }
 
-    public function getArguments(Request $request, $controller)
+    public function getArguments(Request $request, callable $controller, ?\ReflectionFunctionAbstract $reflector = null): array
     {
-        return array($request);
+        return [$request];
     }
 
     public function callController(Request $request)
@@ -75,6 +76,6 @@ class TestMultipleHttpKernel extends HttpKernel implements ControllerResolverInt
 
     public function reset()
     {
-        $this->call = false;
+        $this->called = false;
     }
 }

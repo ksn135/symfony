@@ -5,11 +5,13 @@
 ### Listener 1
 
 - Type: `function`
-- Name: `global_function`
+- Name: `var_dump`
+- Priority: `255`
 
 ### Listener 2
 
 - Type: `closure`
+- Priority: `-1`
 
 ## event2
 
@@ -17,3 +19,4 @@
 
 - Type: `object`
 - Name: `Symfony\Bundle\FrameworkBundle\Tests\Console\Descriptor\CallableClass`
+- Priority: `0`

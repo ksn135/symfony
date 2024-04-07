@@ -11,26 +11,29 @@
 
 namespace Symfony\Component\Translation\Tests\Dumper;
 
-use Symfony\Component\Translation\MessageCatalogue;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Translation\Dumper\JsonFileDumper;
+use Symfony\Component\Translation\MessageCatalogue;
 
-class JsonFileDumperTest extends \PHPUnit_Framework_TestCase
+class JsonFileDumperTest extends TestCase
 {
-    public function testDump()
+    public function testFormatCatalogue()
     {
-        if (version_compare(PHP_VERSION, '5.4.0', '<')) {
-            $this->markTestIncomplete('PHP below 5.4 doesn\'t support JSON pretty printing');
-        }
-
         $catalogue = new MessageCatalogue('en');
-        $catalogue->add(array('foo' => 'bar'));
+        $catalogue->add(['foo' => 'bar']);
 
-        $tempDir = sys_get_temp_dir();
         $dumper = new JsonFileDumper();
-        $dumper->dump($catalogue, array('path' => $tempDir));
 
-        $this->assertEquals(file_get_contents(__DIR__.'/../fixtures/resources.json'), file_get_contents($tempDir.'/messages.en.json'));
+        $this->assertStringEqualsFile(__DIR__.'/../Fixtures/resources.json', $dumper->formatCatalogue($catalogue, 'messages'));
+    }
 
-        unlink($tempDir.'/messages.en.json');
+    public function testDumpWithCustomEncoding()
+    {
+        $catalogue = new MessageCatalogue('en');
+        $catalogue->add(['foo' => '"bar"']);
+
+        $dumper = new JsonFileDumper();
+
+        $this->assertStringEqualsFile(__DIR__.'/../Fixtures/resources.dump.json', $dumper->formatCatalogue($catalogue, 'messages', ['json_encoding' => \JSON_HEX_QUOT]));
     }
 }

@@ -11,18 +11,18 @@
 
 namespace Symfony\Component\Config\Tests\Definition;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
+use Symfony\Component\Config\Definition\Exception\ForbiddenOverwriteException;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 
-class MergeTest extends \PHPUnit_Framework_TestCase
+class MergeTest extends TestCase
 {
-    /**
-     * @expectedException \Symfony\Component\Config\Definition\Exception\ForbiddenOverwriteException
-     */
     public function testForbiddenOverwrite()
     {
-        $tb = new TreeBuilder();
+        $tb = new TreeBuilder('root', 'array');
         $tree = $tb
-            ->root('root', 'array')
+            ->getRootNode()
                 ->children()
                     ->node('foo', 'scalar')
                         ->cannotBeOverwritten()
@@ -32,22 +32,24 @@ class MergeTest extends \PHPUnit_Framework_TestCase
             ->buildTree()
         ;
 
-        $a = array(
+        $a = [
             'foo' => 'bar',
-        );
+        ];
 
-        $b = array(
+        $b = [
             'foo' => 'moo',
-        );
+        ];
+
+        $this->expectException(ForbiddenOverwriteException::class);
 
         $tree->merge($a, $b);
     }
 
     public function testUnsetKey()
     {
-        $tb = new TreeBuilder();
+        $tb = new TreeBuilder('root', 'array');
         $tree = $tb
-            ->root('root', 'array')
+            ->getRootNode()
                 ->children()
                     ->node('foo', 'scalar')->end()
                     ->node('bar', 'scalar')->end()
@@ -67,38 +69,35 @@ class MergeTest extends \PHPUnit_Framework_TestCase
             ->buildTree()
         ;
 
-        $a = array(
+        $a = [
             'foo' => 'bar',
-            'unsettable' => array(
+            'unsettable' => [
                 'foo' => 'a',
                 'bar' => 'b',
-            ),
+            ],
             'unsetted' => false,
-        );
+        ];
 
-        $b = array(
+        $b = [
             'foo' => 'moo',
             'bar' => 'b',
             'unsettable' => false,
-            'unsetted' => array('a', 'b'),
-        );
+            'unsetted' => ['a', 'b'],
+        ];
 
-        $this->assertEquals(array(
+        $this->assertEquals([
             'foo' => 'moo',
             'bar' => 'b',
             'unsettable' => false,
-            'unsetted' => array('a', 'b'),
-        ), $tree->merge($a, $b));
+            'unsetted' => ['a', 'b'],
+        ], $tree->merge($a, $b));
     }
 
-    /**
-     * @expectedException \Symfony\Component\Config\Definition\Exception\InvalidConfigurationException
-     */
     public function testDoesNotAllowNewKeysInSubsequentConfigs()
     {
-        $tb = new TreeBuilder();
+        $tb = new TreeBuilder('root', 'array');
         $tree = $tb
-            ->root('config', 'array')
+            ->getRootNode()
                 ->children()
                     ->node('test', 'array')
                         ->disallowNewKeysInSubsequentConfigs()
@@ -113,27 +112,29 @@ class MergeTest extends \PHPUnit_Framework_TestCase
             ->end()
             ->buildTree();
 
-        $a = array(
-            'test' => array(
-                'a' => array('value' => 'foo'),
-            ),
-        );
+        $a = [
+            'test' => [
+                'a' => ['value' => 'foo'],
+            ],
+        ];
 
-        $b = array(
-            'test' => array(
-                'b' => array('value' => 'foo'),
-            ),
-        );
+        $b = [
+            'test' => [
+                'b' => ['value' => 'foo'],
+            ],
+        ];
+
+        $this->expectException(InvalidConfigurationException::class);
 
         $tree->merge($a, $b);
     }
 
     public function testPerformsNoDeepMerging()
     {
-        $tb = new TreeBuilder();
+        $tb = new TreeBuilder('root', 'array');
 
         $tree = $tb
-            ->root('config', 'array')
+            ->getRootNode()
                 ->children()
                     ->node('no_deep_merging', 'array')
                         ->performNoDeepMerging()
@@ -147,32 +148,32 @@ class MergeTest extends \PHPUnit_Framework_TestCase
             ->buildTree()
         ;
 
-        $a = array(
-            'no_deep_merging' => array(
+        $a = [
+            'no_deep_merging' => [
                 'foo' => 'a',
                 'bar' => 'b',
-            ),
-        );
+            ],
+        ];
 
-        $b = array(
-            'no_deep_merging' => array(
+        $b = [
+            'no_deep_merging' => [
                 'c' => 'd',
-            ),
-        );
+            ],
+        ];
 
-        $this->assertEquals(array(
-            'no_deep_merging' => array(
+        $this->assertEquals([
+            'no_deep_merging' => [
                 'c' => 'd',
-            ),
-        ), $tree->merge($a, $b));
+            ],
+        ], $tree->merge($a, $b));
     }
 
     public function testPrototypeWithoutAKeyAttribute()
     {
-        $tb = new TreeBuilder();
+        $tb = new TreeBuilder('root', 'array');
 
         $tree = $tb
-            ->root('config', 'array')
+            ->getRootNode()
                 ->children()
                     ->arrayNode('append_elements')
                         ->prototype('scalar')->end()
@@ -182,14 +183,14 @@ class MergeTest extends \PHPUnit_Framework_TestCase
             ->buildTree()
         ;
 
-        $a = array(
-            'append_elements' => array('a', 'b'),
-        );
+        $a = [
+            'append_elements' => ['a', 'b'],
+        ];
 
-        $b = array(
-            'append_elements' => array('c', 'd'),
-        );
+        $b = [
+            'append_elements' => ['c', 'd'],
+        ];
 
-        $this->assertEquals(array('append_elements' => array('a', 'b', 'c', 'd')), $tree->merge($a, $b));
+        $this->assertEquals(['append_elements' => ['a', 'b', 'c', 'd']], $tree->merge($a, $b));
     }
 }

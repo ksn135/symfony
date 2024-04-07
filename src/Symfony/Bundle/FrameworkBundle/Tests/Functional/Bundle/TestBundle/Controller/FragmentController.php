@@ -13,29 +13,15 @@ namespace Symfony\Bundle\FrameworkBundle\Tests\Functional\Bundle\TestBundle\Cont
 
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\DependencyInjection\ContainerAware;
+use Symfony\Component\HttpKernel\Controller\ControllerReference;
+use Symfony\Component\HttpKernel\Fragment\FragmentUriGeneratorInterface;
+use Twig\Environment;
 
-class FragmentController extends ContainerAware
+class FragmentController
 {
-    public function indexAction(Request $request)
+    public function indexAction(Environment $twig)
     {
-        $actions = $this->container->get('templating')->get('actions');
-
-        $html1 = $actions->render($actions->controller('TestBundle:Fragment:inlined', array(
-            'options' => array(
-                'bar' => new Bar(),
-                'eleven' => 11,
-            ),
-        )));
-
-        $html2 = $actions->render($actions->controller('TestBundle:Fragment:customformat', array('_format' => 'html')));
-
-        $html3 = $actions->render($actions->controller('TestBundle:Fragment:customlocale', array('_locale' => 'es')));
-
-        $request->setLocale('fr');
-        $html4 = $actions->render($actions->controller('TestBundle:Fragment:forwardlocale'));
-
-        return new Response($html1.'--'.$html2.'--'.$html3.'--'.$html4);
+        return new Response($twig->render('fragment.html.twig', ['bar' => new Bar()]));
     }
 
     public function inlinedAction($options, $_format)
@@ -57,11 +43,16 @@ class FragmentController extends ContainerAware
     {
         return new Response($request->getLocale());
     }
+
+    public function fragmentUriAction(Request $request, FragmentUriGeneratorInterface $fragmentUriGenerator)
+    {
+        return new Response($fragmentUriGenerator->generate(new ControllerReference(self::class.'::indexAction'), $request));
+    }
 }
 
 class Bar
 {
-    private $bar = 'bar';
+    private string $bar = 'bar';
 
     public function getBar()
     {

@@ -20,10 +20,7 @@ namespace Symfony\Component\Intl\Data\Bundle\Writer;
  */
 class JsonBundleWriter implements BundleWriterInterface
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function write($path, $locale, $data)
+    public function write(string $path, string $locale, mixed $data): void
     {
         if ($data instanceof \Traversable) {
             $data = iterator_to_array($data);
@@ -35,14 +32,8 @@ class JsonBundleWriter implements BundleWriterInterface
             }
         });
 
-        if (version_compare(PHP_VERSION, '5.4.0', '>=')) {
-            // Use JSON_PRETTY_PRINT so that we can see what changed in Git diffs
-            file_put_contents(
-                $path.'/'.$locale.'.json',
-                json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)."\n"
-            );
-        } else {
-            file_put_contents($path.'/'.$locale.'.json', json_encode($data)."\n");
-        }
+        $contents = json_encode($data, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_UNICODE)."\n";
+
+        file_put_contents($path.'/'.$locale.'.json', $contents);
     }
 }

@@ -1,8 +1,18 @@
 <?php
 
+/*
+ * This file is part of the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 namespace Symfony\Component\VarDumper\Tests\Fixture;
 
-if (!class_exists('Symfony\Component\VarDumper\Tests\Fixture\DumbFoo')) {
+if (!class_exists(\Symfony\Component\VarDumper\Tests\Fixture\DumbFoo::class)) {
+    #[\AllowDynamicProperties]
     class DumbFoo
     {
         public $foo = 'foo';
@@ -13,31 +23,28 @@ $foo = new DumbFoo();
 $foo->bar = 'bar';
 
 $g = fopen(__FILE__, 'r');
-$h = fopen(__FILE__, 'r');
-fclose($h);
 
-$var = array(
+$var = [
     'number' => 1, null,
-    'const' => 1.1, true, false, NAN, INF, -INF, PHP_INT_MAX,
-    'str' => "déjà", "\xE9\x00",
-    '[]' => array(),
+    'const' => 1.1, true, false, \NAN, \INF, -\INF, \PHP_INT_MAX,
+    'str' => "déjà\n", "\xE9\x01test\t\ning", "bo\u{feff}m" => "te\u{feff}st",
+    '[]' => [],
     'res' => $g,
-    $h,
     'obj' => $foo,
-    'closure' => function ($a, \PDO &$b = null) {},
+    'closure' => function ($a, ?\PDO &$b = null) {},
     'line' => __LINE__ - 1,
-    'nobj' => array((object) array()),
-);
+    'nobj' => [(object) []],
+];
 
-$r = array();
-$r[] =& $r;
+$r = [];
+$r[] = &$r;
 
-$var['recurs'] =& $r;
-$var[] =& $var[0];
+$var['recurs'] = &$r;
+$var[] = &$var[0];
 $var['sobj'] = $var['obj'];
-$var['snobj'] =& $var['nobj'][0];
+$var['snobj'] = &$var['nobj'][0];
 $var['snobj2'] = $var['nobj'][0];
 $var['file'] = __FILE__;
-$var["bin-key-\xE9"] = "";
+$var["bin-key-\xE9"] = '';
 
-unset($g, $h, $r);
+unset($g, $r);

@@ -11,28 +11,38 @@
 
 namespace Symfony\Component\Serializer\Tests\Encoder;
 
-use Symfony\Component\Serializer\Tests\Fixtures\Dummy;
-use Symfony\Component\Serializer\Tests\Fixtures\ScalarDummy;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Serializer\Encoder\XmlEncoder;
-use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Serializer\Exception\NotEncodableValueException;
 use Symfony\Component\Serializer\Exception\UnexpectedValueException;
 use Symfony\Component\Serializer\Normalizer\CustomNormalizer;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Serializer\Tests\Fixtures\Dummy;
+use Symfony\Component\Serializer\Tests\Fixtures\EnvelopedMessage;
+use Symfony\Component\Serializer\Tests\Fixtures\EnvelopedMessageNormalizer;
+use Symfony\Component\Serializer\Tests\Fixtures\EnvelopeNormalizer;
+use Symfony\Component\Serializer\Tests\Fixtures\EnvelopeObject;
+use Symfony\Component\Serializer\Tests\Fixtures\NormalizableTraversableDummy;
+use Symfony\Component\Serializer\Tests\Fixtures\ScalarDummy;
 
-class XmlEncoderTest extends \PHPUnit_Framework_TestCase
+class XmlEncoderTest extends TestCase
 {
-    private $encoder;
+    private XmlEncoder $encoder;
+    private string $exampleDateTimeString = '2017-02-19T15:16:08+0300';
 
-    protected function setUp()
+    protected function setUp(): void
     {
         $this->encoder = new XmlEncoder();
-        $serializer = new Serializer(array(new CustomNormalizer()), array('xml' => new XmlEncoder()));
+        $serializer = new Serializer([new CustomNormalizer()], ['xml' => new XmlEncoder()]);
         $this->encoder->setSerializer($serializer);
     }
 
     public function testEncodeScalar()
     {
         $obj = new ScalarDummy();
-        $obj->xmlFoo = "foo";
+        $obj->xmlFoo = 'foo';
 
         $expected = '<?xml version="1.0"?>'."\n".
             '<response>foo</response>'."\n";
@@ -40,43 +50,56 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($expected, $this->encoder->encode($obj, 'xml'));
     }
 
-    public function testSetRootNodeName()
+    public function testEncodeArrayObject()
     {
-        $obj = new ScalarDummy();
-        $obj->xmlFoo = "foo";
+        $obj = new \ArrayObject(['foo' => 'bar']);
 
-        $this->encoder->setRootNodeName('test');
         $expected = '<?xml version="1.0"?>'."\n".
-            '<test>foo</test>'."\n";
+            '<response><foo>bar</foo></response>'."\n";
 
         $this->assertEquals($expected, $this->encoder->encode($obj, 'xml'));
     }
 
-    /**
-     * @expectedException        \Symfony\Component\Serializer\Exception\UnexpectedValueException
-     * @expectedExceptionMessage Document types are not allowed.
-     */
+    public function testEncodeEmptyArrayObject()
+    {
+        $obj = new \ArrayObject();
+
+        $expected = '<?xml version="1.0"?>'."\n".
+            '<response/>'."\n";
+
+        $this->assertEquals($expected, $this->encoder->encode($obj, 'xml'));
+    }
+
     public function testDocTypeIsNotAllowed()
     {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('Document types are not allowed.');
         $this->encoder->decode('<?xml version="1.0"?><!DOCTYPE foo><foo></foo>', 'foo');
     }
 
     public function testAttributes()
     {
         $obj = new ScalarDummy();
-        $obj->xmlFoo = array(
-            'foo-bar' => array(
+        $obj->xmlFoo = [
+            'foo-bar' => [
                 '@id' => 1,
                 '@name' => 'Bar',
-            ),
-            'Foo' => array(
-                'Bar' => "Test",
+            ],
+            'Foo' => [
+                'Bar' => 'Test',
                 '@Type' => 'test',
-            ),
+            ],
             'föo_bär' => 'a',
-            "Bar" => array(1,2,3),
+            'Bar' => [1, 2, 3],
             'a' => 'b',
-        );
+            'scalars' => [
+                '@bool-true' => true,
+                '@bool-false' => false,
+                '@int' => 3,
+                '@float' => 3.4,
+                '@sring' => 'a',
+            ],
+        ];
         $expected = '<?xml version="1.0"?>'."\n".
             '<response>'.
             '<foo-bar id="1" name="Bar"/>'.
@@ -86,6 +109,7 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
             '<Bar>2</Bar>'.
             '<Bar>3</Bar>'.
             '<a>b</a>'.
+            '<scalars bool-true="1" bool-false="0" int="3" float="3.4" sring="a"/>'.
             '</response>'."\n";
         $this->assertEquals($expected, $this->encoder->encode($obj, 'xml'));
     }
@@ -93,11 +117,11 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
     public function testElementNameValid()
     {
         $obj = new ScalarDummy();
-        $obj->xmlFoo = array(
+        $obj->xmlFoo = [
             'foo-bar' => 'a',
             'foo_bar' => 'a',
             'föo_bär' => 'a',
-        );
+        ];
 
         $expected = '<?xml version="1.0"?>'."\n".
             '<response>'.
@@ -112,7 +136,7 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
     public function testEncodeSimpleXML()
     {
         $xml = simplexml_load_string('<firstname>Peter</firstname>');
-        $array = array('person' => $xml);
+        $array = ['person' => $xml];
 
         $expected = '<?xml version="1.0"?>'."\n".
             '<response><person><firstname>Peter</firstname></person></response>'."\n";
@@ -123,66 +147,134 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
     public function testEncodeXmlAttributes()
     {
         $xml = simplexml_load_string('<firstname>Peter</firstname>');
-        $array = array('person' => $xml);
+        $array = ['person' => $xml];
 
         $expected = '<?xml version="1.1" encoding="utf-8" standalone="yes"?>'."\n".
             '<response><person><firstname>Peter</firstname></person></response>'."\n";
 
-        $context = array(
+        $context = [
             'xml_version' => '1.1',
             'xml_encoding' => 'utf-8',
             'xml_standalone' => true,
-        );
+        ];
+
+        $this->assertSame($expected, $this->encoder->encode($array, 'xml', $context));
+    }
+
+    public function testEncodeRemovingEmptyTags()
+    {
+        $array = ['person' => ['firstname' => 'Peter', 'lastname' => null]];
+
+        $expected = '<?xml version="1.0"?>'."\n".
+            '<response><person><firstname>Peter</firstname></person></response>'."\n";
+
+        $context = ['remove_empty_tags' => true];
+
+        $this->assertSame($expected, $this->encoder->encode($array, 'xml', $context));
+    }
+
+    public function testEncodeNotRemovingEmptyTags()
+    {
+        $array = ['person' => ['firstname' => 'Peter', 'lastname' => null]];
+
+        $expected = '<?xml version="1.0"?>'."\n".
+            '<response><person><firstname>Peter</firstname><lastname/></person></response>'."\n";
+
+        $this->assertSame($expected, $this->encoder->encode($array, 'xml'));
+    }
+
+    public function testContext()
+    {
+        $array = ['person' => ['name' => 'George Abitbol', 'age' => null]];
+        $expected = <<<'XML'
+<?xml version="1.0"?>
+<response>
+  <person>
+    <name>George Abitbol</name>
+    <age></age>
+  </person>
+</response>
+
+XML;
+
+        $context = [
+            'xml_format_output' => true,
+            'save_options' => \LIBXML_NOEMPTYTAG,
+        ];
 
         $this->assertSame($expected, $this->encoder->encode($array, 'xml', $context));
     }
 
     public function testEncodeScalarRootAttributes()
     {
-        $array = array(
-          '#' => 'Paul',
-          '@gender' => 'm',
-        );
+        $array = [
+            '#' => 'Paul',
+            '@eye-color' => 'brown',
+        ];
 
         $expected = '<?xml version="1.0"?>'."\n".
-            '<response gender="m">Paul</response>'."\n";
+            '<response eye-color="brown">Paul</response>'."\n";
 
         $this->assertEquals($expected, $this->encoder->encode($array, 'xml'));
     }
 
     public function testEncodeRootAttributes()
     {
-        $array = array(
-          'firstname' => 'Paul',
-          '@gender' => 'm',
-        );
+        $array = [
+            'firstname' => 'Paul',
+            '@eye-color' => 'brown',
+        ];
 
         $expected = '<?xml version="1.0"?>'."\n".
-            '<response gender="m"><firstname>Paul</firstname></response>'."\n";
+            '<response eye-color="brown"><firstname>Paul</firstname></response>'."\n";
 
         $this->assertEquals($expected, $this->encoder->encode($array, 'xml'));
     }
 
     public function testEncodeCdataWrapping()
     {
-        $array = array(
-          'firstname' => 'Paul <or Me>',
-        );
+        $array = [
+            'firstname' => 'Paul & Martha <or Me>',
+        ];
 
         $expected = '<?xml version="1.0"?>'."\n".
-            '<response><firstname><![CDATA[Paul <or Me>]]></firstname></response>'."\n";
+            '<response><firstname><![CDATA[Paul & Martha <or Me>]]></firstname></response>'."\n";
 
         $this->assertEquals($expected, $this->encoder->encode($array, 'xml'));
     }
 
-    public function testEncodeScalarWithAttribute()
+    public function testEnableCdataWrapping()
     {
-        $array = array(
-            'person' => array('@gender' => 'M', '#' => 'Peter'),
-        );
+        $array = [
+            'firstname' => 'Paul & Martha <or Me>',
+        ];
 
         $expected = '<?xml version="1.0"?>'."\n".
-            '<response><person gender="M">Peter</person></response>'."\n";
+            '<response><firstname><![CDATA[Paul & Martha <or Me>]]></firstname></response>'."\n";
+
+        $this->assertEquals($expected, $this->encoder->encode($array, 'xml', ['cdata_wrapping' => true]));
+    }
+
+    public function testDisableCdataWrapping()
+    {
+        $array = [
+            'firstname' => 'Paul & Martha <or Me>',
+        ];
+
+        $expected = '<?xml version="1.0"?>'."\n".
+            '<response><firstname>Paul &amp; Martha &lt;or Me&gt;</firstname></response>'."\n";
+
+        $this->assertEquals($expected, $this->encoder->encode($array, 'xml', ['cdata_wrapping' => false]));
+    }
+
+    public function testEncodeScalarWithAttribute()
+    {
+        $array = [
+            'person' => ['@eye-color' => 'brown', '#' => 'Peter'],
+        ];
+
+        $expected = '<?xml version="1.0"?>'."\n".
+            '<response><person eye-color="brown">Peter</person></response>'."\n";
 
         $this->assertEquals($expected, $this->encoder->encode($array, 'xml'));
     }
@@ -193,6 +285,104 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
             '<response>foo</response>'."\n";
 
         $this->assertEquals('foo', $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeBigDigitAttributes()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document index="182077241760011681341821060401202210011000045913000000017100">Name</document>
+XML;
+
+        $this->assertSame(['@index' => 182077241760011681341821060401202210011000045913000000017100, '#' => 'Name'], $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeNegativeIntAttribute()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document index="-1234">Name</document>
+XML;
+
+        $this->assertSame(['@index' => -1234, '#' => 'Name'], $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeFloatAttribute()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document index="12.11">Name</document>
+XML;
+
+        $this->assertSame(['@index' => 12.11, '#' => 'Name'], $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeNegativeFloatAttribute()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document index="-12.11">Name</document>
+XML;
+
+        $this->assertSame(['@index' => -12.11, '#' => 'Name'], $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeFloatAttributeWithZeroWholeNumber()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document index="0.123">Name</document>
+XML;
+
+        $this->assertSame(['@index' => 0.123, '#' => 'Name'], $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testNoTypeCastRootAttribute()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document a="123"></document>
+XML;
+
+        $data = $this->encoder->decode($source, 'xml', ['xml_type_cast_attributes' => false]);
+        $expected = [
+            '@a' => '123',
+            '#' => '',
+        ];
+        $this->assertSame($expected, $data);
+    }
+
+    public function testNoTypeCastAttribute()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document a="018" b="-12.11">
+    <node a="018" b="-12.11"/>
+</document>
+XML;
+
+        $data = $this->encoder->decode($source, 'xml', ['xml_type_cast_attributes' => false]);
+        $expected = [
+            '@a' => '018',
+            '@b' => '-12.11',
+            'node' => [
+                '@a' => '018',
+                '@b' => '-12.11',
+                '#' => '',
+            ],
+        ];
+        $this->assertSame($expected, $data);
+    }
+
+    public function testDoesNotTypeCastStringsStartingWith0()
+    {
+        $source = <<<XML
+<?xml version="1.0"?>
+<document a="018"></document>
+XML;
+
+        $data = $this->encoder->decode($source, 'xml');
+        $this->assertSame('018', $data['@a']);
     }
 
     public function testEncode()
@@ -213,19 +403,40 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
 
     public function testEncodeSerializerXmlRootNodeNameOption()
     {
-        $options = array('xml_root_node_name' => 'test');
+        $options = ['xml_root_node_name' => 'test'];
         $this->encoder = new XmlEncoder();
-        $serializer = new Serializer(array(), array('xml' => new XmlEncoder()));
+        $serializer = new Serializer([], ['xml' => new XmlEncoder()]);
         $this->encoder->setSerializer($serializer);
 
-        $array = array(
-            'person' => array('@gender' => 'M', '#' => 'Peter'),
-        );
+        $array = [
+            'person' => ['@eye-color' => 'brown', '#' => 'Peter'],
+        ];
 
         $expected = '<?xml version="1.0"?>'."\n".
-            '<test><person gender="M">Peter</person></test>'."\n";
+            '<test><person eye-color="brown">Peter</person></test>'."\n";
 
         $this->assertEquals($expected, $serializer->serialize($array, 'xml', $options));
+    }
+
+    public function testEncodeTraversableWhenNormalizable()
+    {
+        $this->encoder = new XmlEncoder();
+        $serializer = new Serializer([new CustomNormalizer()], ['xml' => new XmlEncoder()]);
+        $this->encoder->setSerializer($serializer);
+
+        $expected = <<<'XML'
+<?xml version="1.0"?>
+<response><foo>normalizedFoo</foo><bar>normalizedBar</bar></response>
+
+XML;
+
+        $this->assertEquals($expected, $serializer->serialize(new NormalizableTraversableDummy(), 'xml'));
+    }
+
+    public function testEncodeException()
+    {
+        $this->expectException(NotEncodableValueException::class);
+        $this->encoder->encode('Invalid character: '.\chr(7), 'xml');
     }
 
     public function testDecode()
@@ -238,9 +449,9 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
 
     public function testDecodeCdataWrapping()
     {
-        $expected = array(
+        $expected = [
             'firstname' => 'Paul <or Me>',
-        );
+        ];
 
         $xml = '<?xml version="1.0"?>'."\n".
             '<response><firstname><![CDATA[Paul <or Me>]]></firstname></response>'."\n";
@@ -250,9 +461,9 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
 
     public function testDecodeCdataWrappingAndWhitespace()
     {
-        $expected = array(
+        $expected = [
             'firstname' => 'Paul <or Me>',
-        );
+        ];
 
         $xml = '<?xml version="1.0"?>'."\n".
             '<response><firstname>'."\n".
@@ -267,16 +478,27 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
         $array = $this->getNamespacedArray();
 
         $this->assertEquals($array, $this->encoder->decode($source, 'xml'));
+
+        $source = '<?xml version="1.0"?>'."\n".
+            '<response xmlns="http://www.w3.org/2005/Atom" xmlns:app="http://www.w3.org/2007/app" app:foo="bar">'.
+            '</response>'."\n";
+
+        $this->assertEquals([
+            '@xmlns' => 'http://www.w3.org/2005/Atom',
+            '@xmlns:app' => 'http://www.w3.org/2007/app',
+            '@app:foo' => 'bar',
+            '#' => '',
+        ], $this->encoder->decode($source, 'xml'));
     }
 
     public function testDecodeScalarWithAttribute()
     {
         $source = '<?xml version="1.0"?>'."\n".
-            '<response><person gender="M">Peter</person></response>'."\n";
+            '<response><person eye-color="brown">Peter</person></response>'."\n";
 
-        $expected = array(
-            'person' => array('@gender' => 'M', '#' => 'Peter'),
-        );
+        $expected = [
+            'person' => ['@eye-color' => 'brown', '#' => 'Peter'],
+        ];
 
         $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
     }
@@ -284,12 +506,12 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
     public function testDecodeScalarRootAttributes()
     {
         $source = '<?xml version="1.0"?>'."\n".
-            '<person gender="M">Peter</person>'."\n";
+            '<person eye-color="brown">Peter</person>'."\n";
 
-        $expected = array(
+        $expected = [
             '#' => 'Peter',
-            '@gender' => 'M',
-        );
+            '@eye-color' => 'brown',
+        ];
 
         $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
     }
@@ -297,13 +519,13 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
     public function testDecodeRootAttributes()
     {
         $source = '<?xml version="1.0"?>'."\n".
-            '<person gender="M"><firstname>Peter</firstname><lastname>Mac Calloway</lastname></person>'."\n";
+            '<person eye-color="brown"><firstname>Peter</firstname><lastname>Mac Calloway</lastname></person>'."\n";
 
-        $expected = array(
+        $expected = [
             'firstname' => 'Peter',
             'lastname' => 'Mac Calloway',
-            '@gender' => 'M',
-        );
+            '@eye-color' => 'brown',
+        ];
 
         $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
     }
@@ -318,19 +540,57 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
             '</people>'.
             '</response>'."\n";
 
-        $expected = array(
-            'people' => array('person' => array(
-                array('firstname' => 'Benjamin', 'lastname' => 'Alexandre'),
-                array('firstname' => 'Damien', 'lastname' => 'Clay'),
-            )),
-        );
+        $expected = [
+            'people' => ['person' => [
+                ['firstname' => 'Benjamin', 'lastname' => 'Alexandre'],
+                ['firstname' => 'Damien', 'lastname' => 'Clay'],
+            ]],
+        ];
 
         $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
     }
 
+    public function testDecodeXMLWithProcessInstruction()
+    {
+        $source = <<<'XML'
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="/xsl/xmlverbatimwrapper.xsl"?>
+    <?display table-view?>
+    <?sort alpha-ascending?>
+    <response>
+        <foo>foo</foo>
+        <?textinfo whitespace is allowed ?>
+        <bar>a</bar>
+        <bar>b</bar>
+        <baz>
+            <key>val</key>
+            <key2>val</key2>
+            <item key="A B">bar</item>
+            <item>
+                <title>title1</title>
+            </item>
+            <?item ignore-title ?>
+            <item>
+                <title>title2</title>
+            </item>
+            <Barry>
+                <FooBar id="1">
+                    <Baz>Ed</Baz>
+                </FooBar>
+            </Barry>
+        </baz>
+        <qux>1</qux>
+    </response>
+    <?instruction <value> ?>
+XML;
+        $obj = $this->getObject();
+
+        $this->assertEquals(get_object_vars($obj), $this->encoder->decode($source, 'xml'));
+    }
+
     public function testDecodeIgnoreWhiteSpace()
     {
-        $source = <<<XML
+        $source = <<<'XML'
 <?xml version="1.0"?>
 <people>
     <person>
@@ -343,77 +603,176 @@ class XmlEncoderTest extends \PHPUnit_Framework_TestCase
     </person>
 </people>
 XML;
-        $expected = array('person' => array(
-            array('firstname' => 'Benjamin', 'lastname' => 'Alexandre'),
-            array('firstname' => 'Damien', 'lastname' => 'Clay'),
-        ));
+        $expected = ['person' => [
+            ['firstname' => 'Benjamin', 'lastname' => 'Alexandre'],
+            ['firstname' => 'Damien', 'lastname' => 'Clay'],
+        ]];
 
         $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeIgnoreComments()
+    {
+        $source = <<<'XML'
+<?xml version="1.0"?>
+<!-- This comment should not become the root node. -->
+<people>
+    <person>
+        <!-- Even if the first comment didn't become the root node, we don't
+             want this comment either. -->
+        <firstname>Benjamin</firstname>
+        <lastname>Alexandre</lastname>
+    </person>
+    <person>
+        <firstname>Damien</firstname>
+        <lastname>Clay</lastname>
+    </person>
+</people>
+XML;
+
+        $expected = ['person' => [
+          ['firstname' => 'Benjamin', 'lastname' => 'Alexandre'],
+          ['firstname' => 'Damien', 'lastname' => 'Clay'],
+        ]];
+
+        $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeIgnoreDocumentType()
+    {
+        $source = <<<'XML'
+<?xml version="1.0"?>
+<!DOCTYPE people>
+<people>
+    <person>
+        <firstname>Benjamin</firstname>
+        <lastname>Alexandre</lastname>
+    </person>
+    <person>
+        <firstname>Damien</firstname>
+        <lastname>Clay</lastname>
+    </person>
+</people>
+XML;
+        $expected = ['person' => [
+          ['firstname' => 'Benjamin', 'lastname' => 'Alexandre'],
+          ['firstname' => 'Damien', 'lastname' => 'Clay'],
+        ]];
+        $this->assertEquals($expected, $this->encoder->decode(
+            $source,
+            'xml',
+            [XmlEncoder::DECODER_IGNORED_NODE_TYPES => [\XML_DOCUMENT_TYPE_NODE]]
+        ));
+    }
+
+    public function testDecodePreserveComments()
+    {
+        $source = <<<'XML'
+<?xml version="1.0"?>
+<people>
+    <person>
+        <!-- This comment should be decoded. -->
+        <firstname>Benjamin</firstname>
+        <lastname>Alexandre</lastname>
+    </person>
+    <person>
+        <firstname>Damien</firstname>
+        <lastname>Clay</lastname>
+    </person>
+</people>
+XML;
+
+        $this->encoder = new XmlEncoder([
+            XmlEncoder::ROOT_NODE_NAME => 'people',
+            XmlEncoder::DECODER_IGNORED_NODE_TYPES => [\XML_PI_NODE],
+        ]);
+        $serializer = new Serializer([new CustomNormalizer()], ['xml' => new XmlEncoder()]);
+        $this->encoder->setSerializer($serializer);
+
+        $expected = ['person' => [
+          ['firstname' => 'Benjamin', 'lastname' => 'Alexandre', '#comment' => ' This comment should be decoded. '],
+          ['firstname' => 'Damien', 'lastname' => 'Clay'],
+        ]];
+
+        $this->assertEquals($expected, $this->encoder->decode($source, 'xml'));
+    }
+
+    public function testDecodeAlwaysAsCollection()
+    {
+        $this->encoder = new XmlEncoder([XmlEncoder::ROOT_NODE_NAME => 'response']);
+        $serializer = new Serializer([new CustomNormalizer()], ['xml' => new XmlEncoder()]);
+        $this->encoder->setSerializer($serializer);
+
+        $source = <<<'XML'
+<?xml version="1.0"?>
+<order_rows nodeType="order_row" virtualEntity="true">
+    <order_row>
+        <id><![CDATA[16]]></id>
+        <test><![CDATA[16]]></test>
+    </order_row>
+</order_rows>
+XML;
+        $expected = [
+            '@nodeType' => 'order_row',
+            '@virtualEntity' => 'true',
+            'order_row' => [[
+                'id' => [16],
+                'test' => [16],
+            ]],
+        ];
+
+        $this->assertEquals($expected, $this->encoder->decode($source, 'xml', ['as_collection' => true]));
     }
 
     public function testDecodeWithoutItemHash()
     {
         $obj = new ScalarDummy();
-        $obj->xmlFoo = array(
-            'foo-bar' => array(
-                '@key' => "value",
-                'item' => array("@key" => 'key', "key-val" => 'val'),
-            ),
-            'Foo' => array(
-                'Bar' => "Test",
+        $obj->xmlFoo = [
+            'foo-bar' => [
+                '@key' => 'value',
+                'item' => ['@key' => 'key', 'key-val' => 'val'],
+            ],
+            'Foo' => [
+                'Bar' => 'Test',
                 '@Type' => 'test',
-            ),
+            ],
             'föo_bär' => 'a',
-            "Bar" => array(1,2,3),
+            'Bar' => [1, 2, 3],
             'a' => 'b',
-        );
-        $expected = array(
-            'foo-bar' => array(
-                '@key' => "value",
-                'key' => array('@key' => 'key', "key-val" => 'val'),
-            ),
-            'Foo' => array(
-                'Bar' => "Test",
+        ];
+        $expected = [
+            'foo-bar' => [
+                '@key' => 'value',
+                'key' => ['@key' => 'key', 'key-val' => 'val'],
+            ],
+            'Foo' => [
+                'Bar' => 'Test',
                 '@Type' => 'test',
-            ),
+            ],
             'föo_bär' => 'a',
-            "Bar" => array(1,2,3),
+            'Bar' => [1, 2, 3],
             'a' => 'b',
-        );
+        ];
         $xml = $this->encoder->encode($obj, 'xml');
         $this->assertEquals($expected, $this->encoder->decode($xml, 'xml'));
     }
 
-    /**
-     * @expectedException \Symfony\Component\Serializer\Exception\UnexpectedValueException
-     */
     public function testDecodeInvalidXml()
     {
+        $this->expectException(UnexpectedValueException::class);
         $this->encoder->decode('<?xml version="1.0"?><invalid><xml>', 'xml');
     }
 
     public function testPreventsComplexExternalEntities()
     {
-        $oldCwd = getcwd();
-        chdir(__DIR__);
-
-        try {
-            $this->encoder->decode('<?xml version="1.0"?><!DOCTYPE scan[<!ENTITY test SYSTEM "php://filter/read=convert.base64-encode/resource=XmlEncoderTest.php">]><scan>&test;</scan>', 'xml');
-            chdir($oldCwd);
-
-            $this->fail('No exception was thrown.');
-        } catch (\Exception $e) {
-            chdir($oldCwd);
-
-            if (!$e instanceof UnexpectedValueException) {
-                $this->fail('Expected UnexpectedValueException');
-            }
-        }
+        $this->expectException(UnexpectedValueException::class);
+        $this->encoder->decode('<?xml version="1.0"?><!DOCTYPE scan[<!ENTITY test SYSTEM "php://filter/read=convert.base64-encode/resource=XmlEncoderTest.php">]><scan>&test;</scan>', 'xml');
     }
 
     public function testDecodeEmptyXml()
     {
-        $this->setExpectedException('Symfony\Component\Serializer\Exception\UnexpectedValueException', 'Invalid XML data, it can not be empty.');
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('Invalid XML data, it cannot be empty.');
         $this->encoder->decode(' ', 'xml');
     }
 
@@ -445,46 +804,221 @@ XML;
 
     protected function getNamespacedArray()
     {
-        return array(
+        return [
             '@xmlns' => 'http://www.w3.org/2005/Atom',
             '@xmlns:app' => 'http://www.w3.org/2007/app',
             '@xmlns:media' => 'http://search.yahoo.com/mrss/',
             '@xmlns:gd' => 'http://schemas.google.com/g/2005',
             '@xmlns:yt' => 'http://gdata.youtube.com/schemas/2007',
-            'qux' => "1",
-            'app:foo' => "foo",
-            'yt:bar' => array("a", "b"),
-            'media:baz' => array(
-                'media:key' => "val",
-                'media:key2' => "val",
-                'A B' => "bar",
-                'item' => array(
-                    array(
+            'qux' => '1',
+            'app:foo' => 'foo',
+            'yt:bar' => ['a', 'b'],
+            'media:baz' => [
+                'media:key' => 'val',
+                'media:key2' => 'val',
+                'A B' => 'bar',
+                'item' => [
+                    [
                         'title' => 'title1',
-                    ),
-                    array(
+                    ],
+                    [
                         'title' => 'title2',
-                    ),
-                ),
-                'Barry' => array(
+                    ],
+                ],
+                'Barry' => [
                     '@size' => 'large',
-                    'FooBar' => array(
+                    'FooBar' => [
                         'Baz' => 'Ed',
                         '@gd:id' => 1,
-                    ),
-                ),
-            ),
-        );
+                    ],
+                ],
+            ],
+        ];
     }
 
     protected function getObject()
     {
         $obj = new Dummy();
         $obj->foo = 'foo';
-        $obj->bar = array('a', 'b');
-        $obj->baz = array('key' => 'val', 'key2' => 'val', 'A B' => 'bar', 'item' => array(array('title' => 'title1'), array('title' => 'title2')), 'Barry' => array('FooBar' => array('Baz' => 'Ed', '@id' => 1)));
-        $obj->qux = "1";
+        $obj->bar = ['a', 'b'];
+        $obj->baz = ['key' => 'val', 'key2' => 'val', 'A B' => 'bar', 'item' => [['title' => 'title1'], ['title' => 'title2']], 'Barry' => ['FooBar' => ['Baz' => 'Ed', '@id' => 1]]];
+        $obj->qux = '1';
 
         return $obj;
+    }
+
+    public function testEncodeXmlWithBoolValue()
+    {
+        $expectedXml = <<<'XML'
+<?xml version="1.0"?>
+<response><foo>1</foo><bar>0</bar></response>
+
+XML;
+
+        $actualXml = $this->encoder->encode(['foo' => true, 'bar' => false], 'xml');
+
+        $this->assertEquals($expectedXml, $actualXml);
+    }
+
+    public function testEncodeXmlWithDomNodeValue()
+    {
+        $expectedXml = <<<'XML'
+<?xml version="1.0"?>
+<response><foo>bar</foo><bar>foo &amp; bar</bar></response>
+
+XML;
+        $document = new \DOMDocument();
+
+        $actualXml = $this->encoder->encode(['foo' => $document->createTextNode('bar'), 'bar' => $document->createTextNode('foo & bar')], 'xml');
+
+        $this->assertEquals($expectedXml, $actualXml);
+    }
+
+    public function testEncodeXmlWithDateTimeObjectValue()
+    {
+        $xmlEncoder = $this->createXmlEncoderWithDateTimeNormalizer();
+
+        $actualXml = $xmlEncoder->encode(['dateTime' => new \DateTimeImmutable($this->exampleDateTimeString)], 'xml');
+
+        $this->assertEquals($this->createXmlWithDateTime(), $actualXml);
+    }
+
+    public function testEncodeXmlWithDateTimeObjectField()
+    {
+        $xmlEncoder = $this->createXmlEncoderWithDateTimeNormalizer();
+
+        $actualXml = $xmlEncoder->encode(['foo' => ['@dateTime' => new \DateTimeImmutable($this->exampleDateTimeString)]], 'xml');
+
+        $this->assertEquals($this->createXmlWithDateTimeField(), $actualXml);
+    }
+
+    public function testNotEncodableValueExceptionMessageForAResource()
+    {
+        $this->expectException(NotEncodableValueException::class);
+        $this->expectExceptionMessage('An unexpected value could not be serialized: stream resource');
+
+        (new XmlEncoder())->encode(tmpfile(), 'xml');
+    }
+
+    public function testReentrantXmlEncoder()
+    {
+        $envelope = new EnvelopeObject();
+        $message = new EnvelopedMessage();
+        $message->text = 'Symfony is great';
+        $envelope->message = $message;
+
+        $encoder = $this->createXmlEncoderWithEnvelopeNormalizer();
+        $expected = <<<'XML'
+<?xml version="1.0"?>
+<response><message>PD94bWwgdmVyc2lvbj0iMS4wIj8+CjxyZXNwb25zZT48dGV4dD5TeW1mb255IGlzIGdyZWF0PC90ZXh0PjwvcmVzcG9uc2U+Cg==</message></response>
+
+XML;
+
+        $this->assertSame($expected, $encoder->encode($envelope, 'xml'));
+    }
+
+    public function testEncodeComment()
+    {
+        $expected = <<<'XML'
+<?xml version="1.0"?>
+<response><!-- foo --></response>
+
+XML;
+
+        $data = ['#comment' => ' foo '];
+
+        $this->assertEquals($expected, $this->encoder->encode($data, 'xml'));
+    }
+
+    public function testEncodeWithoutPi()
+    {
+        $encoder = new XmlEncoder([
+            XmlEncoder::ROOT_NODE_NAME => 'response',
+            XmlEncoder::ENCODER_IGNORED_NODE_TYPES => [\XML_PI_NODE],
+        ]);
+
+        $expected = '<response/>';
+
+        $this->assertEquals($expected, $encoder->encode([], 'xml'));
+    }
+
+    public function testEncodeWithoutComment()
+    {
+        $encoder = new XmlEncoder([
+            XmlEncoder::ROOT_NODE_NAME => 'response',
+            XmlEncoder::ENCODER_IGNORED_NODE_TYPES => [\XML_COMMENT_NODE],
+        ]);
+
+        $expected = <<<'XML'
+<?xml version="1.0"?>
+<response/>
+
+XML;
+
+        $data = ['#comment' => ' foo '];
+
+        $this->assertEquals($expected, $encoder->encode($data, 'xml'));
+    }
+
+    private function createXmlEncoderWithEnvelopeNormalizer(): XmlEncoder
+    {
+        $normalizers = [
+            $envelopeNormalizer = new EnvelopeNormalizer(),
+            new EnvelopedMessageNormalizer(),
+        ];
+
+        $encoder = new XmlEncoder();
+        $serializer = new Serializer($normalizers, ['xml' => $encoder]);
+        $encoder->setSerializer($serializer);
+        $envelopeNormalizer->setSerializer($serializer);
+
+        return $encoder;
+    }
+
+    private function createXmlEncoderWithDateTimeNormalizer(): XmlEncoder
+    {
+        $encoder = new XmlEncoder();
+        $serializer = new Serializer([$this->createMockDateTimeNormalizer()], ['xml' => new XmlEncoder()]);
+        $encoder->setSerializer($serializer);
+
+        return $encoder;
+    }
+
+    private function createMockDateTimeNormalizer(): MockObject&NormalizerInterface
+    {
+        $mock = $this->createMock(NormalizerInterface::class);
+
+        $mock
+            ->expects($this->once())
+            ->method('normalize')
+            ->with(new \DateTimeImmutable($this->exampleDateTimeString), 'xml', [])
+            ->willReturn($this->exampleDateTimeString);
+
+        $mock
+            ->expects($this->once())
+            ->method('getSupportedTypes')
+            ->willReturn([\DateTimeImmutable::class => true]);
+
+        $mock
+            ->expects($this->once())
+            ->method('supportsNormalization')
+            ->with(new \DateTimeImmutable($this->exampleDateTimeString), 'xml')
+            ->willReturn(true);
+
+        return $mock;
+    }
+
+    private function createXmlWithDateTime(): string
+    {
+        return sprintf('<?xml version="1.0"?>
+<response><dateTime>%s</dateTime></response>
+', $this->exampleDateTimeString);
+    }
+
+    private function createXmlWithDateTimeField(): string
+    {
+        return sprintf('<?xml version="1.0"?>
+<response><foo dateTime="%s"/></response>
+', $this->exampleDateTimeString);
     }
 }

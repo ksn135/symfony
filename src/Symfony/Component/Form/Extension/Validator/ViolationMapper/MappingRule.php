@@ -11,40 +11,22 @@
 
 namespace Symfony\Component\Form\Extension\Validator\ViolationMapper;
 
-use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Form\Exception\ErrorMappingException;
+use Symfony\Component\Form\FormInterface;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
 class MappingRule
 {
-    /**
-     * @var FormInterface
-     */
-    private $origin;
-
-    /**
-     * @var string
-     */
-    private $propertyPath;
-
-    /**
-     * @var string
-     */
-    private $targetPath;
-
-    public function __construct(FormInterface $origin, $propertyPath, $targetPath)
-    {
-        $this->origin = $origin;
-        $this->propertyPath = $propertyPath;
-        $this->targetPath = $targetPath;
+    public function __construct(
+        private FormInterface $origin,
+        private string $propertyPath,
+        private string $targetPath,
+    ) {
     }
 
-    /**
-     * @return FormInterface
-     */
-    public function getOrigin()
+    public function getOrigin(): FormInterface
     {
         return $this->origin;
     }
@@ -54,40 +36,28 @@ class MappingRule
      *
      * If the rule matches, the form mapped by the rule is returned.
      * Otherwise this method returns false.
-     *
-     * @param  string $propertyPath The property path to match against the rule.
-     *
-     * @return null|FormInterface The mapped form or null.
      */
-    public function match($propertyPath)
+    public function match(string $propertyPath): ?FormInterface
     {
-        if ($propertyPath === (string) $this->propertyPath) {
-            return $this->getTarget();
-        }
+        return $propertyPath === $this->propertyPath ? $this->getTarget() : null;
     }
 
     /**
      * Matches a property path against a prefix of the rule path.
-     *
-     * @param string $propertyPath The property path to match against the rule.
-     *
-     * @return bool    Whether the property path is a prefix of the rule or not.
      */
-    public function isPrefix($propertyPath)
+    public function isPrefix(string $propertyPath): bool
     {
-        $length = strlen($propertyPath);
+        $length = \strlen($propertyPath);
         $prefix = substr($this->propertyPath, 0, $length);
-        $next = isset($this->propertyPath[$length]) ? $this->propertyPath[$length] : null;
+        $next = $this->propertyPath[$length] ?? null;
 
         return $prefix === $propertyPath && ('[' === $next || '.' === $next);
     }
 
     /**
-     * @return FormInterface
-     *
      * @throws ErrorMappingException
      */
-    public function getTarget()
+    public function getTarget(): FormInterface
     {
         $childNames = explode('.', $this->targetPath);
         $target = $this->origin;

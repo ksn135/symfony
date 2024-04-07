@@ -11,28 +11,38 @@
 
 namespace Symfony\Component\ExpressionLanguage\Tests\Node;
 
-use Symfony\Component\ExpressionLanguage\Node\UnaryNode;
 use Symfony\Component\ExpressionLanguage\Node\ConstantNode;
+use Symfony\Component\ExpressionLanguage\Node\UnaryNode;
 
-class UnaryNodeTest extends AbstractNodeTest
+class UnaryNodeTest extends AbstractNodeTestCase
 {
-    public function getEvaluateData()
+    public static function getEvaluateData(): array
     {
-        return array(
-            array(-1, new UnaryNode('-', new ConstantNode(1))),
-            array(3, new UnaryNode('+', new ConstantNode(3))),
-            array(false, new UnaryNode('!', new ConstantNode(true))),
-            array(false, new UnaryNode('not', new ConstantNode(true))),
-        );
+        return [
+            [-1, new UnaryNode('-', new ConstantNode(1))],
+            [3, new UnaryNode('+', new ConstantNode(3))],
+            [false, new UnaryNode('!', new ConstantNode(true))],
+            [false, new UnaryNode('not', new ConstantNode(true))],
+        ];
     }
 
-    public function getCompileData()
+    public static function getCompileData(): array
     {
-        return array(
-            array('(-1)', new UnaryNode('-', new ConstantNode(1))),
-            array('(+3)', new UnaryNode('+', new ConstantNode(3))),
-            array('(!true)', new UnaryNode('!', new ConstantNode(true))),
-            array('(!true)', new UnaryNode('not', new ConstantNode(true))),
-        );
+        return [
+            ['(-1)', new UnaryNode('-', new ConstantNode(1))],
+            ['(+3)', new UnaryNode('+', new ConstantNode(3))],
+            ['(!true)', new UnaryNode('!', new ConstantNode(true))],
+            ['(!true)', new UnaryNode('not', new ConstantNode(true))],
+        ];
+    }
+
+    public static function getDumpData(): array
+    {
+        return [
+            ['(- 1)', new UnaryNode('-', new ConstantNode(1))],
+            ['(+ 3)', new UnaryNode('+', new ConstantNode(3))],
+            ['(! true)', new UnaryNode('!', new ConstantNode(true))],
+            ['(not true)', new UnaryNode('not', new ConstantNode(true))],
+        ];
     }
 }

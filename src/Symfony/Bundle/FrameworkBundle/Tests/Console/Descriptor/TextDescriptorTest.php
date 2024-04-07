@@ -12,16 +12,50 @@
 namespace Symfony\Bundle\FrameworkBundle\Tests\Console\Descriptor;
 
 use Symfony\Bundle\FrameworkBundle\Console\Descriptor\TextDescriptor;
+use Symfony\Component\ErrorHandler\ErrorRenderer\FileLinkFormatter;
+use Symfony\Component\Routing\Route;
 
-class TextDescriptorTest extends AbstractDescriptorTest
+class TextDescriptorTest extends AbstractDescriptorTestCase
 {
-    protected function getDescriptor()
+    private static ?FileLinkFormatter $fileLinkFormatter = null;
+
+    protected static function getDescriptor()
     {
-        return new TextDescriptor();
+        return new TextDescriptor(static::$fileLinkFormatter);
     }
 
-    protected function getFormat()
+    protected static function getFormat()
     {
         return 'txt';
+    }
+
+    public static function getDescribeRouteWithControllerLinkTestData()
+    {
+        $getDescribeData = static::getDescribeRouteTestData();
+
+        foreach ($getDescribeData as $key => &$data) {
+            $routeStub = $data[0];
+            $routeStub->setDefault('_controller', sprintf('%s::%s', MyController::class, '__invoke'));
+            $file = $data[2];
+            $file = preg_replace('#(\..*?)$#', '_link$1', $file);
+            $data = file_get_contents(__DIR__.'/../../Fixtures/Descriptor/'.$file);
+            $data = [$routeStub, $data, $file];
+        }
+
+        return $getDescribeData;
+    }
+
+    /** @dataProvider getDescribeRouteWithControllerLinkTestData */
+    public function testDescribeRouteWithControllerLink(Route $route, $expectedDescription)
+    {
+        static::$fileLinkFormatter = new FileLinkFormatter('myeditor://open?file=%f&line=%l');
+        parent::testDescribeRoute($route, str_replace('[:file:]', __FILE__, $expectedDescription));
+    }
+}
+
+class MyController
+{
+    public function __invoke()
+    {
     }
 }

@@ -11,30 +11,6 @@
 
 namespace Symfony\Bundle\SecurityBundle\Tests\Functional\app;
 
-// get the autoload file
-$dir = __DIR__;
-$lastDir = null;
-while ($dir !== $lastDir) {
-    $lastDir = $dir;
-
-    if (is_file($dir.'/autoload.php')) {
-        require_once $dir.'/autoload.php';
-        break;
-    }
-
-    if (is_file($dir.'/autoload.php.dist')) {
-        require_once $dir.'/autoload.php.dist';
-        break;
-    }
-
-    if (file_exists($dir.'/vendor/autoload.php')) {
-        require_once $dir.'/vendor/autoload.php';
-        break;
-    }
-
-    $dir = dirname($dir);
-}
-
 use Symfony\Component\Config\Loader\LoaderInterface;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpKernel\Kernel;
@@ -46,69 +22,78 @@ use Symfony\Component\HttpKernel\Kernel;
  */
 class AppKernel extends Kernel
 {
-    private $testCase;
-    private $rootConfig;
+    private string $varDir;
+    private string $testCase;
+    private array $rootConfig;
 
-    public function __construct($testCase, $rootConfig, $environment, $debug)
+    public function __construct($varDir, $testCase, $rootConfig, $environment, $debug)
     {
         if (!is_dir(__DIR__.'/'.$testCase)) {
             throw new \InvalidArgumentException(sprintf('The test case "%s" does not exist.', $testCase));
         }
+        $this->varDir = $varDir;
         $this->testCase = $testCase;
 
         $fs = new Filesystem();
-        if (!$fs->isAbsolutePath($rootConfig) && !is_file($rootConfig = __DIR__.'/'.$testCase.'/'.$rootConfig)) {
-            throw new \InvalidArgumentException(sprintf('The root config "%s" does not exist.', $rootConfig));
+        foreach ((array) $rootConfig as $config) {
+            if (!$fs->isAbsolutePath($config) && !is_file($config = __DIR__.'/'.$testCase.'/'.$config)) {
+                throw new \InvalidArgumentException(sprintf('The root config "%s" does not exist.', $config));
+            }
+
+            $this->rootConfig[] = $config;
         }
-        $this->rootConfig = $rootConfig;
 
         parent::__construct($environment, $debug);
     }
 
-    public function registerBundles()
+    public function getContainerClass(): string
     {
-        if (!is_file($filename = $this->getRootDir().'/'.$this->testCase.'/bundles.php')) {
+        return parent::getContainerClass().substr(md5(implode('', $this->rootConfig)), -16);
+    }
+
+    public function registerBundles(): iterable
+    {
+        if (!is_file($filename = $this->getProjectDir().'/'.$this->testCase.'/bundles.php')) {
             throw new \RuntimeException(sprintf('The bundles file "%s" does not exist.', $filename));
         }
 
         return include $filename;
     }
 
-    public function init()
-    {
-    }
-
-    public function getRootDir()
+    public function getProjectDir(): string
     {
         return __DIR__;
     }
 
-    public function getCacheDir()
+    public function getCacheDir(): string
     {
-        return sys_get_temp_dir().'/'.Kernel::VERSION.'/'.$this->testCase.'/cache/'.$this->environment;
+        return sys_get_temp_dir().'/'.$this->varDir.'/'.$this->testCase.'/cache/'.$this->environment;
     }
 
-    public function getLogDir()
+    public function getLogDir(): string
     {
-        return sys_get_temp_dir().'/'.Kernel::VERSION.'/'.$this->testCase.'/logs';
+        return sys_get_temp_dir().'/'.$this->varDir.'/'.$this->testCase.'/logs';
     }
 
-    public function registerContainerConfiguration(LoaderInterface $loader)
+    public function registerContainerConfiguration(LoaderInterface $loader): void
     {
-        $loader->load($this->rootConfig);
+        foreach ($this->rootConfig as $config) {
+            $loader->load($config);
+        }
     }
 
     public function serialize()
     {
-        return serialize(array($this->testCase, $this->rootConfig, $this->getEnvironment(), $this->isDebug()));
+        return serialize([$this->varDir, $this->testCase, $this->rootConfig, $this->getEnvironment(), $this->isDebug()]);
     }
 
     public function unserialize($str)
     {
-        call_user_func_array(array($this, '__construct'), unserialize($str));
+        $a = unserialize($str);
+        $this->__construct($a[0], $a[1], $a[2], $a[3], $a[4]);
     }
 
-    protected function getKernelParameters()
+    protected function getKernelParameters(): array
     {
         $parameters = parent::getKernelParameters();
         $parameters['kernel.test_case'] = $this->testCase;

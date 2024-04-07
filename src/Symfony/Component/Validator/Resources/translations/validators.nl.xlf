@@ -1,10 +1,10 @@
-<?xml version="1.0"?>
-<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
-    <file source-language="en" datatype="plaintext" original="file.ext">
+<?xml version="1.0" encoding="utf-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2">
+    <file source-language="en" target-language="nl" datatype="plaintext" original="file.ext">
         <body>
             <trans-unit id="1">
                 <source>This value should be false.</source>
-                <target>Deze waarde mag niet waar zijn.</target>
+                <target>Deze waarde moet onwaar zijn.</target>
             </trans-unit>
             <trans-unit id="2">
                 <source>This value should be true.</source>
@@ -36,7 +36,7 @@
             </trans-unit>
             <trans-unit id="9">
                 <source>This field was not expected.</source>
-                <target>Dit veld was niet verwacht.</target>
+                <target>Dit veld werd niet verwacht.</target>
             </trans-unit>
             <trans-unit id="10">
                 <source>This field is missing.</source>
@@ -56,7 +56,7 @@
             </trans-unit>
             <trans-unit id="14">
                 <source>The file could not be found.</source>
-                <target>Het bestand is niet gevonden.</target>
+                <target>Het bestand kon niet gevonden worden.</target>
             </trans-unit>
             <trans-unit id="15">
                 <source>The file is not readable.</source>
@@ -100,7 +100,7 @@
             </trans-unit>
             <trans-unit id="25">
                 <source>This value is not valid.</source>
-                <target>Deze waarde is ongeldig.</target>
+                <target>Deze waarde is niet geldig.</target>
             </trans-unit>
             <trans-unit id="26">
                 <source>This value is not a valid time.</source>
@@ -124,7 +124,7 @@
             </trans-unit>
             <trans-unit id="34">
                 <source>The file could not be uploaded.</source>
-                <target>Het bestand kon niet geüpload worden.</target>
+                <target>Het bestand kon niet worden geüpload.</target>
             </trans-unit>
             <trans-unit id="35">
                 <source>This value should be a valid number.</source>
@@ -134,21 +134,21 @@
                 <source>This file is not a valid image.</source>
                 <target>Dit bestand is geen geldige afbeelding.</target>
             </trans-unit>
-            <trans-unit id="37">
-                <source>This is not a valid IP address.</source>
-                <target>Dit is geen geldig IP-adres.</target>
+            <trans-unit id="37" resname="This is not a valid IP address.">
+                <source>This value is not a valid IP address.</source>
+                <target>Deze waarde is geen geldig IP-adres.</target>
             </trans-unit>
             <trans-unit id="38">
                 <source>This value is not a valid language.</source>
-                <target>Deze waarde representeert geen geldige taal.</target>
+                <target>Deze waarde is geen geldige taal.</target>
             </trans-unit>
             <trans-unit id="39">
                 <source>This value is not a valid locale.</source>
-                <target>Deze waarde representeert geen geldige lokalisering.</target>
+                <target>Deze waarde is geen geldige locale.</target>
             </trans-unit>
             <trans-unit id="40">
                 <source>This value is not a valid country.</source>
-                <target>Deze waarde representeert geen geldig land.</target>
+                <target>Deze waarde is geen geldig land.</target>
             </trans-unit>
             <trans-unit id="41">
                 <source>This value is already used.</source>
@@ -184,15 +184,15 @@
             </trans-unit>
             <trans-unit id="49">
                 <source>The file was only partially uploaded.</source>
-                <target>Het bestand is niet geheel geüpload.</target>
+                <target>Het bestand is slechts gedeeltelijk geüpload.</target>
             </trans-unit>
             <trans-unit id="50">
                 <source>No file was uploaded.</source>
                 <target>Er is geen bestand geüpload.</target>
             </trans-unit>
-            <trans-unit id="51">
-                <source>No temporary folder was configured in php.ini.</source>
-                <target>Er is geen tijdelijke map geconfigureerd in php.ini.</target>
+            <trans-unit id="51" resname="No temporary folder was configured in php.ini.">
+                <source>No temporary folder was configured in php.ini, or the configured folder does not exist.</source>
+                <target>Er is geen tijdelijke map geconfigureerd in php.ini, of de gespecificeerde map bestaat niet.</target>
             </trans-unit>
             <trans-unit id="52">
                 <source>Cannot write temporary file to disk.</source>
@@ -222,11 +222,11 @@
                 <source>Unsupported card type or invalid card number.</source>
                 <target>Niet-ondersteund type creditcard of ongeldig nummer.</target>
             </trans-unit>
-            <trans-unit id="59">
-                <source>This is not a valid International Bank Account Number (IBAN).</source>
-                <target>Dit is geen geldig internationaal bankrekeningnummer (IBAN).</target>
+            <trans-unit id="59" resname="This is not a valid International Bank Account Number (IBAN).">
+                <source>This value is not a valid International Bank Account Number (IBAN).</source>
+                <target>Deze waarde is geen geldig internationaal bankrekeningnummer (IBAN).</target>
             </trans-unit>
-             <trans-unit id="60">
+            <trans-unit id="60">
                 <source>This value is not a valid ISBN-10.</source>
                 <target>Deze waarde is geen geldige ISBN-10.</target>
             </trans-unit>
@@ -259,7 +259,7 @@
                 <target>Deze waarde moet groter dan of gelijk aan {{ compared_value }} zijn.</target>
             </trans-unit>
             <trans-unit id="68">
-                <source>This value should be identical  to {{ compared_value_type }} {{ compared_value }}.</source>
+                <source>This value should be identical to {{ compared_value_type }} {{ compared_value }}.</source>
                 <target>Deze waarde moet identiek zijn aan {{ compared_value_type }} {{ compared_value }}.</target>
             </trans-unit>
             <trans-unit id="69">
@@ -275,8 +275,8 @@
                 <target>Deze waarde mag niet gelijk zijn aan {{ compared_value }}.</target>
             </trans-unit>
             <trans-unit id="72">
-                <source>This value should not be identical to {{ compared_value }}.</source>
-                <target>Deze waarde mag niet identiek zijn aan {{ compared_value }}.</target>
+                <source>This value should not be identical to {{ compared_value_type }} {{ compared_value }}.</source>
+                <target>Deze waarde mag niet identiek zijn aan {{ compared_value_type }} {{ compared_value }}.</target>
             </trans-unit>
             <trans-unit id="73">
                 <source>The image ratio is too big ({{ ratio }}). Allowed maximum ratio is {{ max_ratio }}.</source>
@@ -301,6 +301,142 @@
             <trans-unit id="78">
                 <source>An empty file is not allowed.</source>
                 <target>Lege bestanden zijn niet toegestaan.</target>
+            </trans-unit>
+            <trans-unit id="79">
+                <source>The host could not be resolved.</source>
+                <target>De hostnaam kon niet worden bepaald.</target>
+            </trans-unit>
+            <trans-unit id="80">
+                <source>This value does not match the expected {{ charset }} charset.</source>
+                <target>Deze waarde is niet in de verwachte tekencodering {{ charset }}.</target>
+            </trans-unit>
+            <trans-unit id="81" resname="This is not a valid Business Identifier Code (BIC).">
+                <source>This value is not a valid Business Identifier Code (BIC).</source>
+                <target>Deze waarde is geen geldige zakelijke identificatiecode (BIC).</target>
+            </trans-unit>
+            <trans-unit id="82">
+                <source>Error</source>
+                <target>Fout</target>
+            </trans-unit>
+            <trans-unit id="83" resname="This is not a valid UUID.">
+                <source>This value is not a valid UUID.</source>
+                <target>Deze waarde is geen geldige UUID.</target>
+            </trans-unit>
+            <trans-unit id="84">
+                <source>This value should be a multiple of {{ compared_value }}.</source>
+                <target>Deze waarde zou een meervoud van {{ compared_value }} moeten zijn.</target>
+            </trans-unit>
+            <trans-unit id="85">
+                <source>This Business Identifier Code (BIC) is not associated with IBAN {{ iban }}.</source>
+                <target>Deze bedrijfsidentificatiecode (BIC) is niet gekoppeld aan IBAN {{ iban }}.</target>
+            </trans-unit>
+            <trans-unit id="86">
+                <source>This value should be valid JSON.</source>
+                <target>Deze waarde moet geldige JSON zijn.</target>
+            </trans-unit>
+            <trans-unit id="87">
+                <source>This collection should contain only unique elements.</source>
+                <target>Deze collectie moet alleen unieke elementen bevatten.</target>
+            </trans-unit>
+            <trans-unit id="88">
+                <source>This value should be positive.</source>
+                <target>Deze waarde moet positief zijn.</target>
+            </trans-unit>
+            <trans-unit id="89">
+                <source>This value should be either positive or zero.</source>
+                <target>Deze waarde moet positief of gelijk aan nul zijn.</target>
+            </trans-unit>
+            <trans-unit id="90">
+                <source>This value should be negative.</source>
+                <target>Deze waarde moet negatief zijn.</target>
+            </trans-unit>
+            <trans-unit id="91">
+                <source>This value should be either negative or zero.</source>
+                <target>Deze waarde moet negatief of gelijk aan nul zijn.</target>
+            </trans-unit>
+            <trans-unit id="92">
+                <source>This value is not a valid timezone.</source>
+                <target>Deze waarde is geen geldige tijdzone.</target>
+            </trans-unit>
+            <trans-unit id="93">
+                <source>This password has been leaked in a data breach, it must not be used. Please use another password.</source>
+                <target>Dit wachtwoord is gelekt vanwege een data-inbreuk, het moet niet worden gebruikt. Kies een ander wachtwoord.</target>
+            </trans-unit>
+            <trans-unit id="94">
+                <source>This value should be between {{ min }} and {{ max }}.</source>
+                <target>Deze waarde moet zich tussen {{ min }} en {{ max }} bevinden.</target>
+            </trans-unit>
+            <trans-unit id="95">
+                <source>This value is not a valid hostname.</source>
+                <target>Deze waarde is geen geldige hostnaam.</target>
+            </trans-unit>
+            <trans-unit id="96">
+                <source>The number of elements in this collection should be a multiple of {{ compared_value }}.</source>
+                <target>Het aantal elementen van deze collectie moet een veelvoud zijn van {{ compared_value }}.</target>
+            </trans-unit>
+            <trans-unit id="97">
+                <source>This value should satisfy at least one of the following constraints:</source>
+                <target>Deze waarde moet voldoen aan tenminste een van de volgende voorwaarden:</target>
+            </trans-unit>
+            <trans-unit id="98">
+                <source>Each element of this collection should satisfy its own set of constraints.</source>
+                <target>Elk element van deze collectie moet voldoen aan zijn eigen set voorwaarden.</target>
+            </trans-unit>
+            <trans-unit id="99">
+                <source>This value is not a valid International Securities Identification Number (ISIN).</source>
+                <target>Deze waarde is geen geldig International Securities Identification Number (ISIN).</target>
+            </trans-unit>
+            <trans-unit id="100">
+                <source>This value should be a valid expression.</source>
+                <target>Deze waarde moet een geldige expressie zijn.</target>
+            </trans-unit>
+            <trans-unit id="101">
+                <source>This value is not a valid CSS color.</source>
+                <target>Deze waarde is geen geldige CSS kleur.</target>
+            </trans-unit>
+            <trans-unit id="102">
+                <source>This value is not a valid CIDR notation.</source>
+                <target>Deze waarde is geen geldige CIDR notatie.</target>
+            </trans-unit>
+            <trans-unit id="103">
+                <source>The value of the netmask should be between {{ min }} and {{ max }}.</source>
+                <target>De waarde van de netmask moet zich tussen {{ min }} en {{ max }} bevinden.</target>
+            </trans-unit>
+            <trans-unit id="104">
+                <source>The filename is too long. It should have {{ filename_max_length }} character or less.|The filename is too long. It should have {{ filename_max_length }} characters or less.</source>
+                <target>De bestandsnaam is te lang. Het moet {{ filename_max_length }} karakter of minder zijn.</target>
+            </trans-unit>
+            <trans-unit id="105">
+                <source>The password strength is too low. Please use a stronger password.</source>
+                <target>De wachtwoordsterkte is te laag. Gebruik alstublieft een sterker wachtwoord.</target>
+            </trans-unit>
+            <trans-unit id="106">
+                <source>This value contains characters that are not allowed by the current restriction-level.</source>
+                <target>Deze waarde bevat tekens die niet zijn toegestaan volgens het huidige beperkingsniveau.</target>
+            </trans-unit>
+            <trans-unit id="107">
+                <source>Using invisible characters is not allowed.</source>
+                <target>Het gebruik van onzichtbare tekens is niet toegestaan.</target>
+            </trans-unit>
+            <trans-unit id="108">
+                <source>Mixing numbers from different scripts is not allowed.</source>
+                <target>Het mengen van cijfers uit verschillende schriften is niet toegestaan.</target>
+            </trans-unit>
+            <trans-unit id="109">
+                <source>Using hidden overlay characters is not allowed.</source>
+                <target>Het gebruik van verborgen overlay-tekens is niet toegestaan.</target>
+            </trans-unit>
+            <trans-unit id="110">
+                <source>The extension of the file is invalid ({{ extension }}). Allowed extensions are {{ extensions }}.</source>
+                <target>De extensie van het bestand is ongeldig ({{ extension }}). Toegestane extensies zijn {{ extensions }}.</target>
+            </trans-unit>
+            <trans-unit id="111">
+                <source>The detected character encoding is invalid ({{ detected }}). Allowed encodings are {{ encodings }}.</source>
+                <target>De gedetecteerde karaktercodering is ongeldig ({{ detected }}). Toegestane coderingen zijn {{ encodings }}.</target>
+            </trans-unit>
+            <trans-unit id="112">
+                <source>This value is not a valid MAC address.</source>
+                <target>Deze waarde is geen geldig MAC-adres.</target>
             </trans-unit>
         </body>
     </file>

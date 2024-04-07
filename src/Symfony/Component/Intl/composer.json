@@ -1,9 +1,9 @@
 {
     "name": "symfony/intl",
     "type": "library",
-    "description": "A PHP replacement layer for the C intl extension that includes additional data from the ICU library.",
+    "description": "Provides access to the localization data of the ICU library",
     "keywords": ["intl", "icu", "internationalization", "localization", "i18n", "l10n"],
-    "homepage": "http://symfony.com",
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {
@@ -20,28 +20,25 @@
         },
         {
             "name": "Symfony Community",
-            "homepage": "http://symfony.com/contributors"
+            "homepage": "https://symfony.com/contributors"
         }
     ],
     "require": {
-        "php": ">=5.3.3"
+        "php": ">=8.2",
+        "symfony/deprecation-contracts": "^2.5|^3"
     },
     "require-dev": {
-        "symfony/filesystem": ">=2.1"
+        "symfony/filesystem": "^6.4|^7.0",
+        "symfony/var-exporter": "^6.4|^7.0"
     },
-    "suggest": {
-        "ext-intl": "to use the component with locales other than \"en\""
+    "conflict": {
+        "symfony/string": "<7.1"
     },
     "autoload": {
-        "psr-0": { "Symfony\\Component\\Intl\\": "" },
-        "classmap": [ "Symfony/Component/Intl/Resources/stubs" ],
-        "files": [ "Symfony/Component/Intl/Resources/stubs/functions.php" ]
+        "psr-4": { "Symfony\\Component\\Intl\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
     },
-    "target-dir": "Symfony/Component/Intl",
-    "minimum-stability": "dev",
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev"
-        }
-    }
+    "minimum-stability": "dev"
 }

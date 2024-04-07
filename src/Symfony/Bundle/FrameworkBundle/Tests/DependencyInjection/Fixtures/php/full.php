@@ -1,84 +1,87 @@
 <?php
 
-$container->loadFromExtension('framework', array(
+$container->loadFromExtension('framework', [
     'secret' => 's3cr3t',
     'default_locale' => 'fr',
-    'form' => null,
+    'enabled_locales' => ['fr', 'en'],
+    'csrf_protection' => true,
+    'form' => [
+        'csrf_protection' => [
+            'field_name' => '_csrf',
+        ],
+    ],
     'http_method_override' => false,
-    'trusted_proxies' => array('127.0.0.1', '10.0.0.1'),
-    'csrf_protection' => array(
+    'handle_all_throwables' => true,
+    'php_errors' => ['log' => true],
+    'trust_x_sendfile_type_header' => true,
+    'esi' => [
         'enabled' => true,
-        'field_name' => '_csrf',
-    ),
-    'esi' => array(
+    ],
+    'ssi' => [
         'enabled' => true,
-    ),
-    'profiler' => array(
+    ],
+    'profiler' => [
         'only_exceptions' => true,
         'enabled' => false,
-    ),
-    'router' => array(
-        'resource' => '%kernel.root_dir%/config/routing.xml',
+    ],
+    'router' => [
+        'resource' => '%kernel.project_dir%/config/routing.xml',
         'type' => 'xml',
-    ),
-    'session' => array(
-        'storage_id' => 'session.storage.native',
+        'utf8' => true,
+    ],
+    'session' => [
+        'storage_factory_id' => 'session.storage.factory.native',
         'handler_id' => 'session.handler.native_file',
         'name' => '_SYMFONY',
         'cookie_lifetime' => 86400,
         'cookie_path' => '/',
         'cookie_domain' => 'example.com',
         'cookie_secure' => true,
-        'cookie_httponly' => true,
+        'cookie_samesite' => 'lax',
+        'cookie_httponly' => false,
+        'use_cookies' => true,
         'gc_maxlifetime' => 90000,
         'gc_divisor' => 108,
         'gc_probability' => 1,
+        'sid_length' => 22,
+        'sid_bits_per_character' => 4,
         'save_path' => '/path/to/sessions',
-    ),
-    'templating' => array(
-        'assets_version' => 'SomeVersionScheme',
-        'assets_base_urls' => 'http://cdn.example.com',
-        'cache' => '/path/to/cache',
-        'engines' => array('php', 'twig'),
-        'loader' => array('loader.foo', 'loader.bar'),
-        'packages' => array(
-            'images' => array(
-                'version' => '1.0.0',
-                'base_urls' => array('http://images1.example.com', 'http://images2.example.com'),
-            ),
-            'foo' => array(
-                'version' => '1.0.0',
-            ),
-            'bar' => array(
-                'base_urls' => array('http://bar1.example.com', 'http://bar2.example.com'),
-            ),
-        ),
-        'form' => array(
-            'resources' => array('theme1', 'theme2'),
-        ),
-        'hinclude_default_template' => 'global_hinclude_template',
-    ),
-    'translator' => array(
+    ],
+    'assets' => [
+        'version' => 'v1',
+    ],
+    'translator' => [
         'enabled' => true,
         'fallback' => 'fr',
-    ),
-    'validation' => array(
+        'paths' => ['%kernel.project_dir%/Fixtures/translations'],
+        'cache_dir' => '%kernel.cache_dir%/translations',
+    ],
+    'validation' => [
         'enabled' => true,
-        'cache' => 'apc',
-    ),
-    'annotations' => array(
-        'cache' => 'file',
-        'debug' => true,
-        'file_cache_dir' => '%kernel.cache_dir%/annotations',
-    ),
+        'email_validation_mode' => 'html5',
+    ],
+    'annotations' => false,
+    'serializer' => [
+        'enabled' => true,
+        'enable_attributes' => true,
+        'name_converter' => 'serializer.name_converter.camel_case_to_snake_case',
+        'circular_reference_handler' => 'my.circular.reference.handler',
+        'max_depth_handler' => 'my.max.depth.handler',
+        'default_context' => ['enable_max_depth' => true],
+    ],
+    'property_info' => true,
+    'type_info' => true,
     'ide' => 'file%%link%%format',
-    'request' => array(
-        'formats' => array(
-            'csv' => array(
+    'request' => [
+        'formats' => [
+            'csv' => [
                 'text/csv',
                 'text/plain',
-            ),
+            ],
             'pdf' => 'application/pdf',
-        ),
-    ),
-));
+        ],
+    ],
+    'html_sanitizer' => [
+        'enabled' => true,
+    ],
+]);

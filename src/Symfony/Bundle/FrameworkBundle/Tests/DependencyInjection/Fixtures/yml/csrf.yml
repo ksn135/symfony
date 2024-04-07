@@ -1,8 +1,13 @@
 framework:
-    csrf_protection: false
+    annotations: false
+    http_method_override: false
+    handle_all_throwables: true
+    php_errors:
+        log: true
     secret: s3cr3t
-    form:
-        csrf_protection: true
-    session: ~
-    # CSRF is disabled by default
-    # csrf_protection: ~
+    csrf_protection: ~
+    session:
+        handler_id: null
+        storage_factory_id: session.storage.factory.native
+        cookie_secure: auto
+        cookie_samesite: lax

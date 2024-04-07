@@ -11,39 +11,57 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\Functional;
 
-/**
- * @group functional
- */
-class ProfilerTest extends WebTestCase
+class ProfilerTest extends AbstractWebTestCase
 {
     /**
      * @dataProvider getConfigs
      */
     public function testProfilerIsDisabled($insulate)
     {
-        $client = $this->createClient(array('test_case' => 'Profiler', 'root_config' => 'config.yml'));
+        $client = $this->createClient(['test_case' => 'Profiler', 'root_config' => 'config.yml']);
         if ($insulate) {
             $client->insulate();
         }
 
         $client->request('GET', '/profiler');
-        $this->assertFalse($client->getProfile());
+        $this->assertNull($client->getProfile());
 
         // enable the profiler for the next request
         $client->enableProfiler();
-        $crawler = $client->request('GET', '/profiler');
-        $profile = $client->getProfile();
-        $this->assertTrue(is_object($profile));
+        $this->assertNull($client->getProfile());
+        $client->request('GET', '/profiler');
+        $this->assertIsObject($client->getProfile());
 
         $client->request('GET', '/profiler');
-        $this->assertFalse($client->getProfile());
+        $this->assertNull($client->getProfile());
     }
 
-    public function getConfigs()
+    /**
+     * @dataProvider getConfigs
+     */
+    public function testProfilerCollectParameter($insulate)
     {
-        return array(
-            array(false),
-            array(true),
-        );
+        $client = $this->createClient(['test_case' => 'ProfilerCollectParameter', 'root_config' => 'config.yml']);
+        if ($insulate) {
+            $client->insulate();
+        }
+
+        $client->request('GET', '/profiler');
+        $this->assertNull($client->getProfile());
+
+        // enable the profiler for the next request
+        $client->request('GET', '/profiler?profile=1');
+        $this->assertIsObject($client->getProfile());
+
+        $client->request('GET', '/profiler');
+        $this->assertNull($client->getProfile());
+    }
+
+    public static function getConfigs()
+    {
+        return [
+            [false],
+            [true],
+        ];
     }
 }

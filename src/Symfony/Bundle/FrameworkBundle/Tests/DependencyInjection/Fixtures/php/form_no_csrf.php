@@ -1,8 +1,13 @@
 <?php
 
-$container->loadFromExtension('framework', array(
-    'form' => array(
-        'enabled' => true,
-        'csrf_protection' => false,
-    ),
-));
+$container->loadFromExtension('framework', [
+    'annotations' => false,
+    'http_method_override' => false,
+    'handle_all_throwables' => true,
+    'php_errors' => ['log' => true],
+    'form' => [
+        'csrf_protection' => [
+            'enabled' => false,
+        ],
+    ],
+]);

@@ -2,14 +2,11 @@
 
 <container xmlns="http://symfony.com/schema/dic/services"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
+    xsi:schemaLocation="http://symfony.com/schema/dic/services https://symfony.com/schema/dic/services/services-1.0.xsd">
   <services>
     <service id="foo" class="FooClass" />
     <service id="baz" class="BazClass" />
-    <service id="scope.container" class="FooClass" scope="container" />
-    <service id="scope.custom" class="FooClass" scope="custom" />
-    <service id="scope.prototype" class="FooClass" scope="prototype" />
-    <service id="constructor" class="FooClass" factory-method="getInstance" />
+    <service id="not_shared" class="FooClass" shared="false" />
     <service id="file" class="FooClass">
       <file>%path%/foo.php</file>
     </service>
@@ -33,7 +30,7 @@
     <service id="method_call1" class="FooClass">
       <call method="setBar" />
       <call method="setBar">
-        <argument type="expression">service("foo").foo() ~ (container.hasparameter("foo") ? parameter("foo") : "default")</argument>
+        <argument type="expression">service("foo").foo() ~ (container.hasParameter("foo") ? parameter("foo") : "default")</argument>
       </call>
     </service>
     <service id="method_call2" class="FooClass">
@@ -46,12 +43,11 @@
         </argument>
       </call>
     </service>
-    <service id="alias_for_foo" alias="foo" />
-    <service id="another_alias_for_foo" alias="foo" public="false" />
-    <service id="factory_service" factory-method="getInstance" factory-service="baz_factory" />
-    <service id="request" class="Request" synthetic="true" synchronized="true" lazy="true"/>
+    <service id="request" class="Request" synthetic="true" lazy="true"/>
     <service id="decorator_service" decorates="decorated" />
     <service id="decorator_service_with_name" decorates="decorated" decoration-inner-name="decorated.pif-pouf"/>
+    <service id="decorator_service_with_name_and_priority" decorates="decorated" decoration-inner-name="decorated.pif-pouf" decoration-priority="5"/>
+    <service id="decorator_service_with_name_and_priority_and_on_invalid" decorates="decorated" decoration-inner-name="decorated.pif-pouf" decoration-priority="5" decoration-on-invalid="ignore"/>
     <service id="new_factory1" class="FooBarClass">
       <factory function="factory" />
     </service>
@@ -60,6 +56,21 @@
     </service>
     <service id="new_factory3" class="FooBarClass">
       <factory class="BazClass" method="getInstance" />
+    </service>
+    <service id="new_factory4" class="BazClass">
+      <factory method="getInstance" />
+    </service>
+    <service id="new_factory5" class="FooBarClass">
+      <factory service="baz" />
+    </service>
+    <service id="factory_expression" class="FooClass">
+      <factory expression="service('foo').getInstance()" />
+    </service>
+    <service id="alias_for_foo" alias="foo" />
+    <service id="another_alias_for_foo" alias="foo" public="true"/>
+    <service id="0" class="FooClass" />
+    <service id="1" class="FooClass">
+      <argument type="service" id="0" />
     </service>
   </services>
 </container>

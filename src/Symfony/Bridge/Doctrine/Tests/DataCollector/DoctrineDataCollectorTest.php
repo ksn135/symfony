@@ -11,136 +11,277 @@
 
 namespace Symfony\Bridge\Doctrine\Tests\DataCollector;
 
-use Doctrine\DBAL\Platforms\MySqlPlatform;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\Persistence\ManagerRegistry;
+use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\Doctrine\DataCollector\DoctrineDataCollector;
+use Symfony\Bridge\Doctrine\Middleware\Debug\DebugDataHolder;
+use Symfony\Bridge\Doctrine\Middleware\Debug\Query;
+use Symfony\Bridge\PhpUnit\ClockMock;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\VarDumper\Cloner\Data;
+use Symfony\Component\VarDumper\Dumper\CliDumper;
 
-class DoctrineDataCollectorTest extends \PHPUnit_Framework_TestCase
+class DoctrineDataCollectorTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        ClockMock::register(self::class);
+        ClockMock::withClockMock(1500000000);
+    }
+
     public function testCollectConnections()
     {
-        $c = $this->createCollector(array());
+        $c = $this->createCollector([]);
         $c->collect(new Request(), new Response());
-        $this->assertEquals(array('default' => 'doctrine.dbal.default_connection'), $c->getConnections());
+        $c = unserialize(serialize($c));
+        $this->assertEquals(['default' => 'doctrine.dbal.default_connection'], $c->getConnections());
     }
 
     public function testCollectManagers()
     {
-        $c = $this->createCollector(array());
+        $c = $this->createCollector([]);
         $c->collect(new Request(), new Response());
-        $this->assertEquals(array('default' => 'doctrine.orm.default_entity_manager'), $c->getManagers());
+        $c = unserialize(serialize($c));
+        $this->assertEquals(['default' => 'doctrine.orm.default_entity_manager'], $c->getManagers());
     }
 
     public function testCollectQueryCount()
     {
-        $c = $this->createCollector(array());
+        $c = $this->createCollector([]);
         $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
         $this->assertEquals(0, $c->getQueryCount());
 
-        $queries = array(
-            array('sql' => "SELECT * FROM table1", 'params' => array(), 'types' => array(), 'executionMS' => 0),
-        );
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 0],
+        ];
         $c = $this->createCollector($queries);
         $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
         $this->assertEquals(1, $c->getQueryCount());
     }
 
     public function testCollectTime()
     {
-        $c = $this->createCollector(array());
+        $c = $this->createCollector([]);
         $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
         $this->assertEquals(0, $c->getTime());
 
-        $queries = array(
-            array('sql' => "SELECT * FROM table1", 'params' => array(), 'types' => array(), 'executionMS' => 1),
-        );
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 1],
+        ];
         $c = $this->createCollector($queries);
         $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
         $this->assertEquals(1, $c->getTime());
 
-        $queries = array(
-            array('sql' => "SELECT * FROM table1", 'params' => array(), 'types' => array(), 'executionMS' => 1),
-            array('sql' => "SELECT * FROM table2", 'params' => array(), 'types' => array(), 'executionMS' => 2),
-        );
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 1],
+            ['sql' => 'SELECT * FROM table2', 'params' => [], 'types' => [], 'executionMS' => 2],
+        ];
         $c = $this->createCollector($queries);
         $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
         $this->assertEquals(3, $c->getTime());
     }
 
-    /**
-     * @dataProvider paramProvider
-     */
-    public function testCollectQueries($param, $types, $expected, $explainable)
+    public function testCollectTimeWithFloatExecutionMS()
     {
-        $queries = array(
-            array('sql' => "SELECT * FROM table1 WHERE field1 = ?1", 'params' => array($param), 'types' => $types, 'executionMS' => 1),
-        );
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 0.23],
+        ];
         $c = $this->createCollector($queries);
         $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+        $this->assertEqualsWithDelta(0.23, $c->getTime(), .01);
 
-        $collected_queries = $c->getQueries();
-        $this->assertEquals($expected, $collected_queries['default'][0]['params'][0]);
-        $this->assertEquals($explainable, $collected_queries['default'][0]['explainable']);
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 1.02],
+            ['sql' => 'SELECT * FROM table2', 'params' => [], 'types' => [], 'executionMS' => 0.75],
+        ];
+        $c = $this->createCollector($queries);
+        $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+        $this->assertEqualsWithDelta(1.77, $c->getTime(), .01);
+
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 0.15],
+            ['sql' => 'SELECT * FROM table2', 'params' => [], 'types' => [], 'executionMS' => 0.32],
+            ['sql' => 'SELECT * FROM table3', 'params' => [], 'types' => [], 'executionMS' => 0.07],
+        ];
+        $c = $this->createCollector($queries);
+        $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+        $this->assertEqualsWithDelta(0.54, $c->getTime(), .01);
     }
 
-    /**
-     * @dataProvider paramProvider
-     */
-    public function testSerialization($param, $types, $expected, $explainable)
+    public function testCollectQueryWithNoTypes()
     {
-        $queries = array(
-            array('sql' => "SELECT * FROM table1 WHERE field1 = ?1", 'params' => array($param), 'types' => $types, 'executionMS' => 1),
-        );
+        $queries = [
+            ['sql' => 'SET sql_mode=(SELECT REPLACE(@@sql_mode, \'ONLY_FULL_GROUP_BY\', \'\'))', 'params' => [], 'types' => null, 'executionMS' => 1],
+        ];
         $c = $this->createCollector($queries);
         $c->collect(new Request(), new Response());
         $c = unserialize(serialize($c));
 
-        $collected_queries = $c->getQueries();
-        $this->assertEquals($expected, $collected_queries['default'][0]['params'][0]);
-        $this->assertEquals($explainable, $collected_queries['default'][0]['explainable']);
+        $collectedQueries = $c->getQueries();
+        $this->assertSame([], $collectedQueries['default'][0]['types']);
     }
 
-    public function paramProvider()
+    public function testReset()
     {
-        return array(
-            array('some value', array(), 'some value', true),
-            array(1, array(), 1, true),
-            array(true, array(), true, true),
-            array(null, array(), null, true),
-            array(new \DateTime('2011-09-11'), array('date'), '2011-09-11', true),
-            array(fopen(__FILE__, 'r'), array(), 'Resource(stream)', false),
-            array(new \SplFileInfo(__FILE__), array(), 'Object(SplFileInfo)', false),
-        );
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 1],
+        ];
+        $c = $this->createCollector($queries);
+        $c->collect(new Request(), new Response());
+
+        $c->reset();
+        $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+
+        $this->assertEquals([], $c->getQueries());
     }
 
-    private function createCollector($queries)
+    /**
+     * @dataProvider paramProvider
+     */
+    public function testCollectQueries($param, $types, $expected)
     {
-        $connection = $this->getMockBuilder('Doctrine\DBAL\Connection')
+        $queries = [
+            ['sql' => 'SELECT * FROM table1 WHERE field1 = ?1', 'params' => [$param], 'types' => $types, 'executionMS' => 1],
+        ];
+        $c = $this->createCollector($queries);
+        $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+
+        $collectedQueries = $c->getQueries();
+
+        $collectedParam = $collectedQueries['default'][0]['params'][0];
+        if ($collectedParam instanceof Data) {
+            $dumper = new CliDumper($out = fopen('php://memory', 'r+'));
+            $dumper->setColors(false);
+            $collectedParam->dump($dumper);
+            $this->assertStringMatchesFormat($expected, print_r(stream_get_contents($out, -1, 0), true));
+        } elseif (\is_string($expected)) {
+            $this->assertStringMatchesFormat($expected, $collectedParam);
+        } else {
+            $this->assertEquals($expected, $collectedParam);
+        }
+
+        $this->assertTrue($collectedQueries['default'][0]['explainable']);
+        $this->assertTrue($collectedQueries['default'][0]['runnable']);
+    }
+
+    public function testCollectQueryWithNoParams()
+    {
+        $queries = [
+            ['sql' => 'SELECT * FROM table1', 'params' => [], 'types' => [], 'executionMS' => 1],
+            ['sql' => 'SELECT * FROM table1', 'params' => null, 'types' => null, 'executionMS' => 1],
+        ];
+        $c = $this->createCollector($queries);
+        $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+
+        $collectedQueries = $c->getQueries();
+        $this->assertInstanceOf(Data::class, $collectedQueries['default'][0]['params']);
+        $this->assertEquals([], $collectedQueries['default'][0]['params']->getValue());
+        $this->assertTrue($collectedQueries['default'][0]['explainable']);
+        $this->assertTrue($collectedQueries['default'][0]['runnable']);
+        $this->assertInstanceOf(Data::class, $collectedQueries['default'][1]['params']);
+        $this->assertEquals([], $collectedQueries['default'][1]['params']->getValue());
+        $this->assertTrue($collectedQueries['default'][1]['explainable']);
+        $this->assertTrue($collectedQueries['default'][1]['runnable']);
+    }
+
+    /**
+     * @dataProvider paramProvider
+     */
+    public function testSerialization($param, array $types, $expected)
+    {
+        $queries = [
+            ['sql' => 'SELECT * FROM table1 WHERE field1 = ?1', 'params' => [$param], 'types' => $types, 'executionMS' => 1],
+        ];
+        $c = $this->createCollector($queries);
+        $c->collect(new Request(), new Response());
+        $c = unserialize(serialize($c));
+
+        $collectedQueries = $c->getQueries();
+
+        $collectedParam = $collectedQueries['default'][0]['params'][0];
+        if ($collectedParam instanceof Data) {
+            $dumper = new CliDumper($out = fopen('php://memory', 'r+'));
+            $dumper->setColors(false);
+            $collectedParam->dump($dumper);
+            $this->assertStringMatchesFormat($expected, print_r(stream_get_contents($out, -1, 0), true));
+        } elseif (\is_string($expected)) {
+            $this->assertStringMatchesFormat($expected, $collectedParam);
+        } else {
+            $this->assertEquals($expected, $collectedParam);
+        }
+
+        $this->assertTrue($collectedQueries['default'][0]['explainable']);
+        $this->assertTrue($collectedQueries['default'][0]['runnable']);
+    }
+
+    public static function paramProvider(): array
+    {
+        return [
+            ['some value', [], 'some value'],
+            [1, [], 1],
+            [true, [], true],
+            [null, [], null],
+        ];
+    }
+
+    private function createCollector(array $queries): DoctrineDataCollector
+    {
+        $connection = $this->getMockBuilder(Connection::class)
             ->disableOriginalConstructor()
             ->getMock();
         $connection->expects($this->any())
             ->method('getDatabasePlatform')
-            ->will($this->returnValue(new MySqlPlatform()));
+            ->willReturn(new MySqlPlatform());
 
-        $registry = $this->getMock('Doctrine\Common\Persistence\ManagerRegistry');
+        $registry = $this->createMock(ManagerRegistry::class);
         $registry
-                ->expects($this->any())
-                ->method('getConnectionNames')
-                ->will($this->returnValue(array('default' => 'doctrine.dbal.default_connection')));
+            ->expects($this->any())
+            ->method('getConnectionNames')
+            ->willReturn(['default' => 'doctrine.dbal.default_connection']);
         $registry
-                ->expects($this->any())
-                ->method('getManagerNames')
-                ->will($this->returnValue(array('default' => 'doctrine.orm.default_entity_manager')));
+            ->expects($this->any())
+            ->method('getManagerNames')
+            ->willReturn(['default' => 'doctrine.orm.default_entity_manager']);
         $registry->expects($this->any())
             ->method('getConnection')
-            ->will($this->returnValue($connection));
+            ->willReturn($connection);
 
-        $logger = $this->getMock('Doctrine\DBAL\Logging\DebugStack');
-        $logger->queries = $queries;
+        $debugDataHolder = new DebugDataHolder();
+        $collector = new DoctrineDataCollector($registry, $debugDataHolder);
+        foreach ($queries as $queryData) {
+            $query = new Query($queryData['sql'] ?? '');
+            foreach (($queryData['params'] ?? []) as $key => $value) {
+                if (\is_int($key)) {
+                    ++$key;
+                }
 
-        $collector = new DoctrineDataCollector($registry);
-        $collector->addLogger('default', $logger);
+                $query->setValue($key, $value, $queryData['type'][$key] ?? ParameterType::STRING);
+            }
+
+            $query->start();
+
+            $debugDataHolder->addQuery('default', $query);
+
+            if (isset($queryData['executionMS'])) {
+                usleep($queryData['executionMS'] * 1000000);
+            }
+            $query->stop();
+        }
 
         return $collector;
     }

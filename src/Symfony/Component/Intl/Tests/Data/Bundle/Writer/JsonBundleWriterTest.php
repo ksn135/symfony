@@ -11,71 +11,56 @@
 
 namespace Symfony\Component\Intl\Tests\Data\Bundle\Writer;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Intl\Data\Bundle\Writer\JsonBundleWriter;
-use Symfony\Component\Intl\Util\IntlTestHelper;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
-class JsonBundleWriterTest extends \PHPUnit_Framework_TestCase
+class JsonBundleWriterTest extends TestCase
 {
-    /**
-     * @var JsonBundleWriter
-     */
-    private $writer;
+    private JsonBundleWriter $writer;
+    private string $directory;
+    private Filesystem $filesystem;
 
-    private $directory;
-
-    /**
-     * @var Filesystem
-     */
-    private $filesystem;
-
-    protected function setUp()
+    protected function setUp(): void
     {
-        if (version_compare(PHP_VERSION, '5.4.0', '<')) {
-            $this->markTestSkipped('This test requires at least PHP 5.4.0.');
-        }
-
         $this->writer = new JsonBundleWriter();
-        $this->directory = sys_get_temp_dir().'/JsonBundleWriterTest/'.rand(1000, 9999);
+        $this->directory = sys_get_temp_dir().'/JsonBundleWriterTest/'.mt_rand(1000, 9999);
         $this->filesystem = new Filesystem();
 
         $this->filesystem->mkdir($this->directory);
     }
 
-    protected function tearDown()
+    protected function tearDown(): void
     {
-        if (version_compare(PHP_VERSION, '5.4.0', '<')) {
-            return;
-        }
-
         $this->filesystem->remove($this->directory);
     }
 
     public function testWrite()
     {
-        $this->writer->write($this->directory, 'en', array(
-            'Entry1' => array(
-                'Array' => array('foo', 'bar'),
+        $this->writer->write($this->directory, 'en', [
+            'Entry1' => [
+                'Array' => ['foo', 'bar'],
                 'Integer' => 5,
                 'Boolean' => false,
                 'Float' => 1.23,
-            ),
+            ],
             'Entry2' => 'String',
-            'Traversable' => new \ArrayIterator(array(
+            'Traversable' => new \ArrayIterator([
                 'Foo' => 'Bar',
-            )),
-        ));
+            ]),
+        ]);
 
         $this->assertFileEquals(__DIR__.'/Fixtures/en.json', $this->directory.'/en.json');
     }
 
+    /**
+     * @requires extension intl
+     */
     public function testWriteResourceBundle()
     {
-        IntlTestHelper::requireFullIntl($this);
-
         $bundle = new \ResourceBundle('rb', __DIR__.'/Fixtures', false);
 
         $this->writer->write($this->directory, 'en', $bundle);

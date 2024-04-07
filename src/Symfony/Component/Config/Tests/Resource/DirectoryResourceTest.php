@@ -11,22 +11,23 @@
 
 namespace Symfony\Component\Config\Tests\Resource;
 
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Resource\DirectoryResource;
 
-class DirectoryResourceTest extends \PHPUnit_Framework_TestCase
+class DirectoryResourceTest extends TestCase
 {
-    protected $directory;
+    protected string $directory;
 
-    protected function setUp()
+    protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir().'/symfonyDirectoryIterator';
+        $this->directory = sys_get_temp_dir().\DIRECTORY_SEPARATOR.'symfonyDirectoryIterator';
         if (!file_exists($this->directory)) {
             mkdir($this->directory);
         }
         touch($this->directory.'/tmp.xml');
     }
 
-    protected function tearDown()
+    protected function tearDown(): void
     {
         if (!is_dir($this->directory)) {
             return;
@@ -34,7 +35,7 @@ class DirectoryResourceTest extends \PHPUnit_Framework_TestCase
         $this->removeDirectory($this->directory);
     }
 
-    protected function removeDirectory($directory)
+    protected function removeDirectory(string $directory): void
     {
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory), \RecursiveIteratorIterator::CHILD_FIRST);
         foreach ($iterator as $path) {
@@ -53,14 +54,20 @@ class DirectoryResourceTest extends \PHPUnit_Framework_TestCase
     public function testGetResource()
     {
         $resource = new DirectoryResource($this->directory);
-        $this->assertSame($this->directory, $resource->getResource(), '->getResource() returns the path to the resource');
-        $this->assertSame($this->directory, (string) $resource, '->__toString() returns the path to the resource');
+        $this->assertSame(realpath($this->directory), $resource->getResource(), '->getResource() returns the path to the resource');
     }
 
     public function testGetPattern()
     {
-        $resource = new DirectoryResource('foo', 'bar');
+        $resource = new DirectoryResource($this->directory, 'bar');
         $this->assertEquals('bar', $resource->getPattern());
+    }
+
+    public function testResourceDoesNotExist()
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/The directory ".*" does not exist./');
+        new DirectoryResource('/____foo/foobar'.mt_rand(1, 999999));
     }
 
     public function testIsFresh()
@@ -68,8 +75,13 @@ class DirectoryResourceTest extends \PHPUnit_Framework_TestCase
         $resource = new DirectoryResource($this->directory);
         $this->assertTrue($resource->isFresh(time() + 10), '->isFresh() returns true if the resource has not changed');
         $this->assertFalse($resource->isFresh(time() - 86400), '->isFresh() returns false if the resource has been updated');
+    }
 
-        $resource = new DirectoryResource('/____foo/foobar'.rand(1, 999999));
+    public function testIsFreshForDeletedResources()
+    {
+        $resource = new DirectoryResource($this->directory);
+        $this->removeDirectory($this->directory);
+
         $this->assertFalse($resource->isFresh(time()), '->isFresh() returns false if the resource does not exist');
     }
 
@@ -87,11 +99,20 @@ class DirectoryResourceTest extends \PHPUnit_Framework_TestCase
         $this->assertFalse($resource->isFresh(time() + 10), '->isFresh() returns false if a new file is added');
     }
 
+    public function testIsFreshNewFileWithDifferentPattern()
+    {
+        $resource = new DirectoryResource($this->directory, '/.xml$/');
+        touch($this->directory.'/new.yaml', time() + 20);
+        $this->assertTrue($resource->isFresh(time() + 10), '->isFresh() returns true if a new file with a non-matching pattern is added');
+    }
+
     public function testIsFreshDeleteFile()
     {
         $resource = new DirectoryResource($this->directory);
+        $time = time();
+        usleep(1500000);
         unlink($this->directory.'/tmp.xml');
-        $this->assertFalse($resource->isFresh(time()), '->isFresh() returns false if an existing file is removed');
+        $this->assertFalse($resource->isFresh($time), '->isFresh() returns false if an existing file is removed');
     }
 
     public function testIsFreshDeleteDirectory()
@@ -144,9 +165,17 @@ class DirectoryResourceTest extends \PHPUnit_Framework_TestCase
     {
         $resource = new DirectoryResource($this->directory, '/\.(foo|xml)$/');
 
-        $unserialized = unserialize(serialize($resource));
+        unserialize(serialize($resource));
 
-        $this->assertSame($this->directory, $resource->getResource());
+        $this->assertSame(realpath($this->directory), $resource->getResource());
         $this->assertSame('/\.(foo|xml)$/', $resource->getPattern());
+    }
+
+    public function testResourcesWithDifferentPatternsAreDifferent()
+    {
+        $resourceA = new DirectoryResource($this->directory, '/.xml$/');
+        $resourceB = new DirectoryResource($this->directory, '/.yaml$/');
+
+        $this->assertCount(2, array_unique([$resourceA, $resourceB]));
     }
 }

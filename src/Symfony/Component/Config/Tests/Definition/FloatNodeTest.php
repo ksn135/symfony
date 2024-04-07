@@ -11,54 +11,69 @@
 
 namespace Symfony\Component\Config\Tests\Definition;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Definition\Exception\InvalidTypeException;
 use Symfony\Component\Config\Definition\FloatNode;
 
-class FloatNodeTest extends \PHPUnit_Framework_TestCase
+class FloatNodeTest extends TestCase
 {
     /**
      * @dataProvider getValidValues
      */
-    public function testNormalize($value)
+    public function testNormalize(int|float $value)
     {
         $node = new FloatNode('test');
         $this->assertSame($value, $node->normalize($value));
     }
 
-    public function getValidValues()
+    /**
+     * @dataProvider getValidValues
+     */
+    public function testValidNonEmptyValues(int|float $value)
     {
-        return array(
-            array(1798.0),
-            array(-678.987),
-            array(12.56E45),
-            array(0.0),
+        $node = new FloatNode('test');
+        $node->setAllowEmptyValue(false);
+
+        $this->assertSame($value, $node->finalize($value));
+    }
+
+    public static function getValidValues(): array
+    {
+        return [
+            [1798.0],
+            [-678.987],
+            [12.56E45],
+            [0.0],
             // Integer are accepted too, they will be cast
-            array(17),
-            array(-10),
-            array(0),
-        );
+            [17],
+            [-10],
+            [0],
+        ];
     }
 
     /**
      * @dataProvider getInvalidValues
-     * @expectedException \Symfony\Component\Config\Definition\Exception\InvalidTypeException
      */
     public function testNormalizeThrowsExceptionOnInvalidValues($value)
     {
         $node = new FloatNode('test');
+
+        $this->expectException(InvalidTypeException::class);
+
         $node->normalize($value);
     }
 
-    public function getInvalidValues()
+    public static function getInvalidValues(): array
     {
-        return array(
-            array(null),
-            array(''),
-            array('foo'),
-            array(true),
-            array(false),
-            array(array()),
-            array(array('foo' => 'bar')),
-            array(new \stdClass()),
-        );
+        return [
+            [null],
+            [''],
+            ['foo'],
+            [true],
+            [false],
+            [[]],
+            [['foo' => 'bar']],
+            [new \stdClass()],
+        ];
     }
 }

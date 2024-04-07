@@ -11,28 +11,32 @@
 
 namespace Symfony\Component\Form\Extension\Validator\ViolationMapper;
 
-use Symfony\Component\Form\FormInterface;
-use Symfony\Component\Form\Util\InheritDataAwareIterator;
-use Symfony\Component\PropertyAccess\PropertyPathIterator;
-use Symfony\Component\PropertyAccess\PropertyPathBuilder;
-use Symfony\Component\PropertyAccess\PropertyPathIteratorInterface;
+use Symfony\Component\Form\FileUploadError;
 use Symfony\Component\Form\FormError;
+use Symfony\Component\Form\FormInterface;
+use Symfony\Component\Form\FormRendererInterface;
+use Symfony\Component\Form\Util\InheritDataAwareIterator;
+use Symfony\Component\PropertyAccess\PropertyPathBuilder;
+use Symfony\Component\PropertyAccess\PropertyPathIterator;
+use Symfony\Component\PropertyAccess\PropertyPathIteratorInterface;
+use Symfony\Component\Validator\Constraints\File;
 use Symfony\Component\Validator\ConstraintViolation;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
  */
 class ViolationMapper implements ViolationMapperInterface
 {
-    /**
-     * @var bool
-     */
-    private $allowNonSynchronized;
+    private bool $allowNonSynchronized = false;
 
-    /**
-     * {@inheritdoc}
-     */
-    public function mapViolation(ConstraintViolation $violation, FormInterface $form, $allowNonSynchronized = false)
+    public function __construct(
+        private ?FormRendererInterface $formRenderer = null,
+        private ?TranslatorInterface $translator = null,
+    ) {
+    }
+
+    public function mapViolation(ConstraintViolation $violation, FormInterface $form, bool $allowNonSynchronized = false): void
     {
         $this->allowNonSynchronized = $allowNonSynchronized;
 
@@ -48,7 +52,7 @@ class ViolationMapper implements ViolationMapperInterface
         $match = false;
 
         // Don't create a ViolationPath instance for empty property paths
-        if (strlen($violation->getPropertyPath()) > 0) {
+        if ('' !== $violation->getPropertyPath()) {
             $violationPath = new ViolationPath($violation->getPropertyPath());
             $relativePath = $this->reconstructPath($violationPath, $form);
         }
@@ -124,11 +128,87 @@ class ViolationMapper implements ViolationMapperInterface
 
         // Only add the error if the form is synchronized
         if ($this->acceptsErrors($scope)) {
+            if ($violation->getConstraint() instanceof File && (string) \UPLOAD_ERR_INI_SIZE === $violation->getCode()) {
+                $errorsTarget = $scope;
+
+                while (null !== $errorsTarget->getParent() && $errorsTarget->getConfig()->getErrorBubbling()) {
+                    $errorsTarget = $errorsTarget->getParent();
+                }
+
+                $errors = $errorsTarget->getErrors();
+                $errorsTarget->clearErrors();
+
+                foreach ($errors as $error) {
+                    if (!$error instanceof FileUploadError) {
+                        $errorsTarget->addError($error);
+                    }
+                }
+            }
+
+            $message = $violation->getMessage();
+            $messageTemplate = $violation->getMessageTemplate();
+
+            if (str_contains($message, '{{ label }}') || str_contains($messageTemplate, '{{ label }}')) {
+                $form = $scope;
+
+                do {
+                    $labelFormat = $form->getConfig()->getOption('label_format');
+                } while (null === $labelFormat && null !== $form = $form->getParent());
+
+                if (null !== $labelFormat) {
+                    $label = str_replace(
+                        [
+                            '%name%',
+                            '%id%',
+                        ],
+                        [
+                            $scope->getName(),
+                            (string) $scope->getPropertyPath(),
+                        ],
+                        $labelFormat
+                    );
+                } else {
+                    $label = $scope->getConfig()->getOption('label');
+                }
+
+                if (false !== $label) {
+                    if (null === $label && null !== $this->formRenderer) {
+                        $label = $this->formRenderer->humanize($scope->getName());
+                    } else {
+                        $label ??= $scope->getName();
+                    }
+
+                    if (null !== $this->translator) {
+                        $form = $scope;
+                        $translationParameters[] = $form->getConfig()->getOption('label_translation_parameters', []);
+
+                        do {
+                            $translationDomain = $form->getConfig()->getOption('translation_domain');
+                            array_unshift(
+                                $translationParameters,
+                                $form->getConfig()->getOption('label_translation_parameters', [])
+                            );
+                        } while (null === $translationDomain && null !== $form = $form->getParent());
+
+                        $translationParameters = array_merge([], ...$translationParameters);
+
+                        $label = $this->translator->trans(
+                            $label,
+                            $translationParameters,
+                            $translationDomain
+                        );
+                    }
+
+                    $message = str_replace('{{ label }}', $label, $message);
+                    $messageTemplate = str_replace('{{ label }}', $label, $messageTemplate);
+                }
+            }
+
             $scope->addError(new FormError(
-                $violation->getMessage(),
-                $violation->getMessageTemplate(),
-                $violation->getMessageParameters(),
-                $violation->getMessagePluralization(),
+                $message,
+                $messageTemplate,
+                $violation->getParameters(),
+                $violation->getPlural(),
                 $violation
             ));
         }
@@ -140,23 +220,15 @@ class ViolationMapper implements ViolationMapperInterface
      *
      * If a matching child is found, it is returned. Otherwise
      * null is returned.
-     *
-     * @param FormInterface                 $form The form to search.
-     * @param PropertyPathIteratorInterface $it   The iterator at its current position.
-     *
-     * @return null|FormInterface The found match or null.
      */
-    private function matchChild(FormInterface $form, PropertyPathIteratorInterface $it)
+    private function matchChild(FormInterface $form, PropertyPathIteratorInterface $it): ?FormInterface
     {
-        // Remember at what property path underneath "data"
-        // we are looking. Check if there is a child with that
-        // path, otherwise increase path by one more piece
+        $target = null;
         $chunk = '';
-        $foundChild = null;
-        $foundAtIndex = 0;
+        $foundAtIndex = null;
 
         // Construct mapping rules for the given form
-        $rules = array();
+        $rules = [];
 
         foreach ($form->getConfig()->getOption('error_mapping') as $propertyPath => $targetPath) {
             // Dot rules are considered at the very end
@@ -165,17 +237,9 @@ class ViolationMapper implements ViolationMapperInterface
             }
         }
 
-        // Skip forms inheriting their parent data when iterating the children
-        $childIterator = new \RecursiveIteratorIterator(
-            new InheritDataAwareIterator($form)
-        );
+        $children = iterator_to_array(new \RecursiveIteratorIterator(new InheritDataAwareIterator($form)), false);
 
-        // Make the path longer until we find a matching child
-        while (true) {
-            if (!$it->valid()) {
-                return;
-            }
-
+        while ($it->valid()) {
             if ($it->isIndex()) {
                 $chunk .= '['.$it->current().']';
             } else {
@@ -197,44 +261,33 @@ class ViolationMapper implements ViolationMapperInterface
                 }
             }
 
-            // Test children unless we already found one
-            if (null === $foundChild) {
-                foreach ($childIterator as $child) {
-                    /* @var FormInterface $child */
-                    $childPath = (string) $child->getPropertyPath();
-
-                    // Child found, mark as return value
-                    if ($chunk === $childPath) {
-                        $foundChild = $child;
-                        $foundAtIndex = $it->key();
-                    }
+            /** @var FormInterface $child */
+            foreach ($children as $i => $child) {
+                $childPath = (string) $child->getPropertyPath();
+                if ($childPath === $chunk) {
+                    $target = $child;
+                    $foundAtIndex = $it->key();
+                } elseif (str_starts_with($childPath, $chunk)) {
+                    continue;
                 }
+
+                unset($children[$i]);
             }
 
-            // Add element to the chunk
             $it->next();
-
-            // If we reached the end of the path or if there are no
-            // more matching mapping rules, return the found child
-            if (null !== $foundChild && (!$it->valid() || count($rules) === 0)) {
-                // Reset index in case we tried to find mapping
-                // rules further down the path
-                $it->seek($foundAtIndex);
-
-                return $foundChild;
-            }
         }
+
+        if (null !== $foundAtIndex) {
+            $it->seek($foundAtIndex);
+        }
+
+        return $target;
     }
 
     /**
      * Reconstructs a property path from a violation path and a form tree.
-     *
-     * @param  ViolationPath $violationPath The violation path.
-     * @param  FormInterface $origin        The root form of the tree.
-     *
-     * @return RelativePath The reconstructed path.
      */
-    private function reconstructPath(ViolationPath $violationPath, FormInterface $origin)
+    private function reconstructPath(ViolationPath $violationPath, FormInterface $origin): ?RelativePath
     {
         $propertyPathBuilder = new PropertyPathBuilder($violationPath);
         $it = $violationPath->getIterator();
@@ -258,13 +311,6 @@ class ViolationMapper implements ViolationMapperInterface
                 // Form inherits its parent data
                 // Cut the piece out of the property path and proceed
                 $propertyPathBuilder->remove($i);
-            } elseif (!$scope->getConfig()->getMapped()) {
-                // Form is not mapped
-                // Set the form as new origin and strip everything
-                // we have so far in the path
-                $origin = $scope;
-                $propertyPathBuilder->remove(0, $i + 1);
-                $i = 0;
             } else {
                 /* @var \Symfony\Component\PropertyAccess\PropertyPathInterface $propertyPath */
                 $propertyPath = $scope->getPropertyPath();
@@ -285,16 +331,8 @@ class ViolationMapper implements ViolationMapperInterface
         return null !== $finalPath ? new RelativePath($origin, $finalPath) : null;
     }
 
-    /**
-     * @param FormInterface $form
-     *
-     * @return bool
-     */
-    private function acceptsErrors(FormInterface $form)
+    private function acceptsErrors(FormInterface $form): bool
     {
-        // Ignore non-submitted forms. This happens, for example, in PATCH
-        // requests.
-        // https://github.com/symfony/symfony/pull/10567
-        return $form->isSubmitted() && ($this->allowNonSynchronized || $form->isSynchronized());
+        return $this->allowNonSynchronized || $form->isSynchronized();
     }
 }

@@ -17,51 +17,35 @@ use Symfony\Component\CssSelector\Exception\SyntaxErrorException;
 /**
  * CSS selector token stream.
  *
- * This component is a port of the Python cssselector library,
+ * This component is a port of the Python cssselect library,
  * which is copyright Ian Bicking, @see https://github.com/SimonSapin/cssselect.
  *
  * @author Jean-François Simon <jeanfrancois.simon@sensiolabs.com>
+ *
+ * @internal
  */
 class TokenStream
 {
     /**
      * @var Token[]
      */
-    private $tokens = array();
-
-    /**
-     * @var bool
-     */
-    private $frozen = false;
+    private array $tokens = [];
 
     /**
      * @var Token[]
      */
-    private $used = array();
+    private array $used = [];
 
-    /**
-     * @var int
-     */
-    private $cursor = 0;
-
-    /**
-     * @var Token|null
-     */
-    private $peeked = null;
-
-    /**
-     * @var bool
-     */
-    private $peeking = false;
+    private int $cursor = 0;
+    private ?Token $peeked;
+    private bool $peeking = false;
 
     /**
      * Pushes a token.
      *
-     * @param Token $token
-     *
-     * @return TokenStream
+     * @return $this
      */
-    public function push(Token $token)
+    public function push(Token $token): static
     {
         $this->tokens[] = $token;
 
@@ -71,12 +55,10 @@ class TokenStream
     /**
      * Freezes stream.
      *
-     * @return TokenStream
+     * @return $this
      */
-    public function freeze()
+    public function freeze(): static
     {
-        $this->frozen = true;
-
         return $this;
     }
 
@@ -84,10 +66,8 @@ class TokenStream
      * Returns next token.
      *
      * @throws InternalErrorException If there is no more token
-     *
-     * @return Token
      */
-    public function getNext()
+    public function getNext(): Token
     {
         if ($this->peeking) {
             $this->peeking = false;
@@ -100,15 +80,13 @@ class TokenStream
             throw new InternalErrorException('Unexpected token stream end.');
         }
 
-        return $this->tokens[$this->cursor ++];
+        return $this->tokens[$this->cursor++];
     }
 
     /**
      * Returns peeked token.
-     *
-     * @return Token
      */
-    public function getPeek()
+    public function getPeek(): Token
     {
         if (!$this->peeking) {
             $this->peeked = $this->getNext();
@@ -123,19 +101,17 @@ class TokenStream
      *
      * @return Token[]
      */
-    public function getUsed()
+    public function getUsed(): array
     {
         return $this->used;
     }
 
     /**
-     * Returns nex identifier token.
+     * Returns next identifier token.
      *
      * @throws SyntaxErrorException If next token is not an identifier
-     *
-     * @return string The identifier token value
      */
-    public function getNextIdentifier()
+    public function getNextIdentifier(): string
     {
         $next = $this->getNext();
 
@@ -147,13 +123,11 @@ class TokenStream
     }
 
     /**
-     * Returns nex identifier or star delimiter token.
+     * Returns next identifier or null if star delimiter token is found.
      *
      * @throws SyntaxErrorException If next token is not an identifier or a star delimiter
-     *
-     * @return null|string The identifier token value or null if star found
      */
-    public function getNextIdentifierOrStar()
+    public function getNextIdentifierOrStar(): ?string
     {
         $next = $this->getNext();
 
@@ -161,8 +135,8 @@ class TokenStream
             return $next->getValue();
         }
 
-        if ($next->isDelimiter(array('*'))) {
-            return;
+        if ($next->isDelimiter(['*'])) {
+            return null;
         }
 
         throw SyntaxErrorException::unexpectedToken('identifier or "*"', $next);
@@ -171,7 +145,7 @@ class TokenStream
     /**
      * Skips next whitespace if any.
      */
-    public function skipWhitespace()
+    public function skipWhitespace(): void
     {
         $peek = $this->getPeek();
 

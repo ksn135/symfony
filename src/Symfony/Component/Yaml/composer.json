@@ -1,9 +1,9 @@
 {
     "name": "symfony/yaml",
     "type": "library",
-    "description": "Symfony Yaml Component",
+    "description": "Loads and dumps YAML files",
     "keywords": [],
-    "homepage": "http://symfony.com",
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {
@@ -12,20 +12,27 @@
         },
         {
             "name": "Symfony Community",
-            "homepage": "http://symfony.com/contributors"
+            "homepage": "https://symfony.com/contributors"
         }
     ],
     "require": {
-        "php": ">=5.3.3"
+        "php": ">=8.2",
+        "symfony/polyfill-ctype": "^1.8"
+    },
+    "require-dev": {
+        "symfony/console": "^6.4|^7.0"
+    },
+    "conflict": {
+        "symfony/console": "<6.4"
     },
     "autoload": {
-        "psr-0": { "Symfony\\Component\\Yaml\\": "" }
+        "psr-4": { "Symfony\\Component\\Yaml\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
     },
-    "target-dir": "Symfony/Component/Yaml",
-    "minimum-stability": "dev",
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev"
-        }
-    }
+    "bin": [
+        "Resources/bin/yaml-lint"
+    ],
+    "minimum-stability": "dev"
 }

@@ -11,26 +11,21 @@
 
 namespace Symfony\Component\HttpFoundation\Tests;
 
+use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * @group time-sensitive
+ */
 class ResponseTest extends ResponseTestCase
 {
-    public function testCreate()
-    {
-        $response = Response::create('foo', 301, array('Foo' => 'bar'));
-
-        $this->assertInstanceOf('Symfony\Component\HttpFoundation\Response', $response);
-        $this->assertEquals(301, $response->getStatusCode());
-        $this->assertEquals('bar', $response->headers->get('foo'));
-    }
-
     public function testToString()
     {
         $response = new Response();
         $response = explode("\r\n", $response);
-        $this->assertEquals("HTTP/1.0 200 OK", $response[0]);
-        $this->assertEquals("Cache-Control: no-cache", $response[1]);
+        $this->assertEquals('HTTP/1.0 200 OK', $response[0]);
+        $this->assertEquals('Cache-Control: no-cache, private', $response[1]);
     }
 
     public function testClone()
@@ -44,24 +39,25 @@ class ResponseTest extends ResponseTestCase
     {
         $response = new Response();
         $headers = $response->sendHeaders();
-        $this->assertObjectHasAttribute('headers', $headers);
-        $this->assertObjectHasAttribute('content', $headers);
-        $this->assertObjectHasAttribute('version', $headers);
-        $this->assertObjectHasAttribute('statusCode', $headers);
-        $this->assertObjectHasAttribute('statusText', $headers);
-        $this->assertObjectHasAttribute('charset', $headers);
+        $this->assertSame($response, $headers);
+    }
+
+    public function testSendInformationalResponse()
+    {
+        $response = new Response();
+        $response->sendHeaders(103);
+
+        // Informational responses must not override the main status code
+        $this->assertSame(200, $response->getStatusCode());
+
+        $response->sendHeaders();
     }
 
     public function testSend()
     {
         $response = new Response();
         $responseSend = $response->send();
-        $this->assertObjectHasAttribute('headers', $responseSend);
-        $this->assertObjectHasAttribute('content', $responseSend);
-        $this->assertObjectHasAttribute('version', $responseSend);
-        $this->assertObjectHasAttribute('statusCode', $responseSend);
-        $this->assertObjectHasAttribute('statusText', $responseSend);
-        $this->assertObjectHasAttribute('charset', $responseSend);
+        $this->assertSame($response, $responseSend);
     }
 
     public function testGetCharset()
@@ -105,17 +101,33 @@ class ResponseTest extends ResponseTestCase
         $this->assertFalse($response->mustRevalidate());
     }
 
-    public function testSetNotModified()
+    public function testMustRevalidateWithMustRevalidateCacheControlHeader()
     {
         $response = new Response();
+        $response->headers->set('cache-control', 'must-revalidate');
+
+        $this->assertTrue($response->mustRevalidate());
+    }
+
+    public function testMustRevalidateWithProxyRevalidateCacheControlHeader()
+    {
+        $response = new Response();
+        $response->headers->set('cache-control', 'proxy-revalidate');
+
+        $this->assertTrue($response->mustRevalidate());
+    }
+
+    public function testSetNotModified()
+    {
+        $response = new Response('foo');
         $modified = $response->setNotModified();
-        $this->assertObjectHasAttribute('headers', $modified);
-        $this->assertObjectHasAttribute('content', $modified);
-        $this->assertObjectHasAttribute('version', $modified);
-        $this->assertObjectHasAttribute('statusCode', $modified);
-        $this->assertObjectHasAttribute('statusText', $modified);
-        $this->assertObjectHasAttribute('charset', $modified);
+        $this->assertSame($response, $modified);
         $this->assertEquals(304, $modified->getStatusCode());
+
+        ob_start();
+        $modified->sendContent();
+        $string = ob_get_clean();
+        $this->assertEmpty($string);
     }
 
     public function testIsSuccessful()
@@ -169,7 +181,7 @@ class ResponseTest extends ResponseTestCase
         $etagTwo = 'randomly_generated_etag_2';
 
         $request = new Request();
-        $request->headers->set('if_none_match', sprintf('%s, %s, %s', $etagOne, $etagTwo, 'etagThree'));
+        $request->headers->set('If-None-Match', sprintf('%s, %s, %s', $etagOne, $etagTwo, 'etagThree'));
 
         $response = new Response();
 
@@ -181,6 +193,38 @@ class ResponseTest extends ResponseTestCase
 
         $response->headers->set('ETag', '');
         $this->assertFalse($response->isNotModified($request));
+
+        // Test wildcard
+        $request = new Request();
+        $request->headers->set('If-None-Match', '*');
+
+        $response->headers->set('ETag', $etagOne);
+        $this->assertTrue($response->isNotModified($request));
+    }
+
+    public function testIsNotModifiedWeakEtag()
+    {
+        $etag = 'randomly_generated_etag';
+        $weakEtag = 'W/randomly_generated_etag';
+
+        $request = new Request();
+        $request->headers->set('If-None-Match', $etag);
+        $response = new Response();
+
+        $response->headers->set('ETag', $etag);
+        $this->assertTrue($response->isNotModified($request));
+
+        $response->headers->set('ETag', $weakEtag);
+        $this->assertTrue($response->isNotModified($request));
+
+        $request->headers->set('If-None-Match', $weakEtag);
+        $response = new Response();
+
+        $response->headers->set('ETag', $etag);
+        $this->assertTrue($response->isNotModified($request));
+
+        $response->headers->set('ETag', $weakEtag);
+        $this->assertTrue($response->isNotModified($request));
     }
 
     public function testIsNotModifiedLastModifiedAndEtag()
@@ -191,14 +235,14 @@ class ResponseTest extends ResponseTestCase
         $etag = 'randomly_generated_etag';
 
         $request = new Request();
-        $request->headers->set('if_none_match', sprintf('%s, %s', $etag, 'etagThree'));
+        $request->headers->set('If-None-Match', sprintf('%s, %s', $etag, 'etagThree'));
         $request->headers->set('If-Modified-Since', $modified);
 
         $response = new Response();
 
         $response->headers->set('ETag', $etag);
         $response->headers->set('Last-Modified', $after);
-        $this->assertFalse($response->isNotModified($request));
+        $this->assertTrue($response->isNotModified($request));
 
         $response->headers->set('ETag', 'non-existent-etag');
         $response->headers->set('Last-Modified', $before);
@@ -215,7 +259,7 @@ class ResponseTest extends ResponseTestCase
         $etag = 'randomly_generated_etag';
 
         $request = new Request();
-        $request->headers->set('if_none_match', sprintf('%s, %s', $etag, 'etagThree'));
+        $request->headers->set('If-None-Match', sprintf('%s, %s', $etag, 'etagThree'));
         $request->headers->set('If-Modified-Since', $modified);
 
         $response = new Response();
@@ -227,12 +271,26 @@ class ResponseTest extends ResponseTestCase
         $this->assertFalse($response->isNotModified($request));
     }
 
+    public function testIfNoneMatchWithoutETag()
+    {
+        $request = new Request();
+        $request->headers->set('If-None-Match', 'randomly_generated_etag');
+
+        $this->assertFalse((new Response())->isNotModified($request));
+
+        // Test wildcard
+        $request = new Request();
+        $request->headers->set('If-None-Match', '*');
+
+        $this->assertFalse((new Response())->isNotModified($request));
+    }
+
     public function testIsValidateable()
     {
-        $response = new Response('', 200, array('Last-Modified' => $this->createDateTimeOneHourAgo()->format(DATE_RFC2822)));
+        $response = new Response('', 200, ['Last-Modified' => $this->createDateTimeOneHourAgo()->format(\DATE_RFC2822)]);
         $this->assertTrue($response->isValidateable(), '->isValidateable() returns true if Last-Modified is present');
 
-        $response = new Response('', 200, array('ETag' => '"12345"'));
+        $response = new Response('', 200, ['ETag' => '"12345"']);
         $this->assertTrue($response->isValidateable(), '->isValidateable() returns true if ETag is present');
 
         $response = new Response();
@@ -242,21 +300,25 @@ class ResponseTest extends ResponseTestCase
     public function testGetDate()
     {
         $oneHourAgo = $this->createDateTimeOneHourAgo();
-        $response = new Response('', 200, array('Date' => $oneHourAgo->format(DATE_RFC2822)));
-        $this->assertEquals(0, $oneHourAgo->diff($response->getDate())->format('%s'), '->getDate() returns the Date header if present');
+        $response = new Response('', 200, ['Date' => $oneHourAgo->format(\DATE_RFC2822)]);
+        $date = $response->getDate();
+        $this->assertEquals($oneHourAgo->getTimestamp(), $date->getTimestamp(), '->getDate() returns the Date header if present');
 
         $response = new Response();
         $date = $response->getDate();
-        $this->assertLessThan(1, $date->diff(new \DateTime(), true)->format('%s'), '->getDate() returns the current Date if no Date header present');
+        $this->assertEquals(time(), $date->getTimestamp(), '->getDate() returns the current Date if no Date header present');
 
-        $response = new Response('', 200, array('Date' => $this->createDateTimeOneHourAgo()->format(DATE_RFC2822)));
+        $response = new Response('', 200, ['Date' => $this->createDateTimeOneHourAgo()->format(\DATE_RFC2822)]);
         $now = $this->createDateTimeNow();
-        $response->headers->set('Date', $now->format(DATE_RFC2822));
-        $this->assertLessThanOrEqual(1, $now->diff($response->getDate())->format('%s'), '->getDate() returns the date when the header has been modified');
+        $response->headers->set('Date', $now->format(\DATE_RFC2822));
+        $date = $response->getDate();
+        $this->assertEquals($now->getTimestamp(), $date->getTimestamp(), '->getDate() returns the date when the header has been modified');
 
         $response = new Response('', 200);
+        $now = $this->createDateTimeNow();
         $response->headers->remove('Date');
-        $this->assertInstanceOf('\DateTime', $response->getDate());
+        $date = $response->getDate();
+        $this->assertEquals($now->getTimestamp(), $date->getTimestamp(), '->getDate() returns the current Date when the header has previously been removed');
     }
 
     public function testGetMaxAge()
@@ -271,13 +333,12 @@ class ResponseTest extends ResponseTestCase
 
         $response = new Response();
         $response->headers->set('Cache-Control', 'must-revalidate');
-        $response->headers->set('Expires', $this->createDateTimeOneHourLater()->format(DATE_RFC2822));
-        $this->assertLessThanOrEqual(1, $response->getMaxAge() - 3600, '->getMaxAge() falls back to Expires when no max-age or s-maxage directive present');
+        $response->headers->set('Expires', $this->createDateTimeOneHourLater()->format(\DATE_RFC2822));
+        $this->assertEquals(3600, $response->getMaxAge(), '->getMaxAge() falls back to Expires when no max-age or s-maxage directive present');
 
         $response = new Response();
-        $response->headers->set('Cache-Control', 'must-revalidate');
         $response->headers->set('Expires', -1);
-        $this->assertEquals('Sat, 01 Jan 00 00:00:00 +0000', $response->getExpires()->format(DATE_RFC822));
+        $this->assertSame(0, $response->getMaxAge());
 
         $response = new Response();
         $this->assertNull($response->getMaxAge(), '->getMaxAge() returns null if no freshness information available');
@@ -290,6 +351,44 @@ class ResponseTest extends ResponseTestCase
 
         $cacheControl = $response->headers->get('Cache-Control');
         $this->assertEquals('public, s-maxage=20', $cacheControl);
+    }
+
+    public function testSetStaleIfError()
+    {
+        $response = new Response();
+        $response->setSharedMaxAge(20);
+        $response->setStaleIfError(86400);
+
+        $cacheControl = $response->headers->get('Cache-Control');
+        $this->assertEquals('public, s-maxage=20, stale-if-error=86400', $cacheControl);
+    }
+
+    public function testSetStaleWhileRevalidate()
+    {
+        $response = new Response();
+        $response->setSharedMaxAge(20);
+        $response->setStaleWhileRevalidate(300);
+
+        $cacheControl = $response->headers->get('Cache-Control');
+        $this->assertEquals('public, s-maxage=20, stale-while-revalidate=300', $cacheControl);
+    }
+
+    public function testSetStaleIfErrorWithoutSharedMaxAge()
+    {
+        $response = new Response();
+        $response->setStaleIfError(86400);
+
+        $cacheControl = $response->headers->get('Cache-Control');
+        $this->assertEquals('stale-if-error=86400, private', $cacheControl);
+    }
+
+    public function testSetStaleWhileRevalidateWithoutSharedMaxAge()
+    {
+        $response = new Response();
+        $response->setStaleWhileRevalidate(300);
+
+        $cacheControl = $response->headers->get('Cache-Control');
+        $this->assertEquals('stale-while-revalidate=300, private', $cacheControl);
     }
 
     public function testIsPrivate()
@@ -334,6 +433,17 @@ class ResponseTest extends ResponseTestCase
         $response->headers->set('Expires', -1);
         $response->expire();
         $this->assertNull($response->headers->get('Age'), '->expire() does not set the Age when the response is expired');
+
+        $response = new Response();
+        $response->headers->set('Expires', date(\DATE_RFC2822, time() + 600));
+        $response->expire();
+        $this->assertNull($response->headers->get('Expires'), '->expire() removes the Expires header when the response is fresh');
+    }
+
+    public function testNullExpireHeader()
+    {
+        $response = new Response(null, 200, ['Expires' => null]);
+        $this->assertNull($response->getExpires());
     }
 
     public function testGetTtl()
@@ -342,21 +452,21 @@ class ResponseTest extends ResponseTestCase
         $this->assertNull($response->getTtl(), '->getTtl() returns null when no Expires or Cache-Control headers are present');
 
         $response = new Response();
-        $response->headers->set('Expires', $this->createDateTimeOneHourLater()->format(DATE_RFC2822));
-        $this->assertLessThanOrEqual(1, 3600 - $response->getTtl(), '->getTtl() uses the Expires header when no max-age is present');
+        $response->headers->set('Expires', $this->createDateTimeOneHourLater()->format(\DATE_RFC2822));
+        $this->assertEquals(3600, $response->getTtl(), '->getTtl() uses the Expires header when no max-age is present');
 
         $response = new Response();
-        $response->headers->set('Expires', $this->createDateTimeOneHourAgo()->format(DATE_RFC2822));
-        $this->assertLessThan(0, $response->getTtl(), '->getTtl() returns negative values when Expires is in past');
+        $response->headers->set('Expires', $this->createDateTimeOneHourAgo()->format(\DATE_RFC2822));
+        $this->assertSame(0, $response->getTtl(), '->getTtl() returns zero when Expires is in past');
 
         $response = new Response();
-        $response->headers->set('Expires', $response->getDate()->format(DATE_RFC2822));
+        $response->headers->set('Expires', $response->getDate()->format(\DATE_RFC2822));
         $response->headers->set('Age', 0);
         $this->assertSame(0, $response->getTtl(), '->getTtl() correctly handles zero');
 
         $response = new Response();
         $response->headers->set('Cache-Control', 'max-age=60');
-        $this->assertLessThan(1, 60 - $response->getTtl(), '->getTtl() uses Cache-Control max-age when present');
+        $this->assertEquals(60, $response->getTtl(), '->getTtl() uses Cache-Control max-age when present');
     }
 
     public function testSetClientTtl()
@@ -381,21 +491,21 @@ class ResponseTest extends ResponseTestCase
     public function testGetVary()
     {
         $response = new Response();
-        $this->assertEquals(array(), $response->getVary(), '->getVary() returns an empty array if no Vary header is present');
+        $this->assertEquals([], $response->getVary(), '->getVary() returns an empty array if no Vary header is present');
 
         $response = new Response();
         $response->headers->set('Vary', 'Accept-Language');
-        $this->assertEquals(array('Accept-Language'), $response->getVary(), '->getVary() parses a single header name value');
+        $this->assertEquals(['Accept-Language'], $response->getVary(), '->getVary() parses a single header name value');
 
         $response = new Response();
         $response->headers->set('Vary', 'Accept-Language User-Agent    X-Foo');
-        $this->assertEquals(array('Accept-Language', 'User-Agent', 'X-Foo'), $response->getVary(), '->getVary() parses multiple header name values separated by spaces');
+        $this->assertEquals(['Accept-Language', 'User-Agent', 'X-Foo'], $response->getVary(), '->getVary() parses multiple header name values separated by spaces');
 
         $response = new Response();
         $response->headers->set('Vary', 'Accept-Language,User-Agent,    X-Foo');
-        $this->assertEquals(array('Accept-Language', 'User-Agent', 'X-Foo'), $response->getVary(), '->getVary() parses multiple header name values separated by commas');
+        $this->assertEquals(['Accept-Language', 'User-Agent', 'X-Foo'], $response->getVary(), '->getVary() parses multiple header name values separated by commas');
 
-        $vary = array('Accept-Language', 'User-Agent', 'X-foo');
+        $vary = ['Accept-Language', 'User-Agent', 'X-foo'];
 
         $response = new Response();
         $response->headers->set('Vary', $vary);
@@ -410,29 +520,21 @@ class ResponseTest extends ResponseTestCase
     {
         $response = new Response();
         $response->setVary('Accept-Language');
-        $this->assertEquals(array('Accept-Language'), $response->getVary());
+        $this->assertEquals(['Accept-Language'], $response->getVary());
 
         $response->setVary('Accept-Language, User-Agent');
-        $this->assertEquals(array('Accept-Language', 'User-Agent'), $response->getVary(), '->setVary() replace the vary header by default');
+        $this->assertEquals(['Accept-Language', 'User-Agent'], $response->getVary(), '->setVary() replace the vary header by default');
 
         $response->setVary('X-Foo', false);
-        $this->assertEquals(array('Accept-Language', 'User-Agent', 'X-Foo'), $response->getVary(), '->setVary() doesn\'t wipe out earlier Vary headers if replace is set to false');
+        $this->assertEquals(['Accept-Language', 'User-Agent', 'X-Foo'], $response->getVary(), '->setVary() doesn\'t wipe out earlier Vary headers if replace is set to false');
     }
 
     public function testDefaultContentType()
     {
-        $headerMock = $this->getMock('Symfony\Component\HttpFoundation\ResponseHeaderBag', array('set'));
-        $headerMock->expects($this->at(0))
-            ->method('set')
-            ->with('Content-Type', 'text/html');
-        $headerMock->expects($this->at(1))
-            ->method('set')
-            ->with('Content-Type', 'text/html; charset=UTF-8');
-
         $response = new Response('foo');
-        $response->headers = $headerMock;
-
         $response->prepare(new Request());
+
+        $this->assertSame('text/html; charset=UTF-8', $response->headers->get('Content-Type'));
     }
 
     public function testContentTypeCharset()
@@ -444,6 +546,16 @@ class ResponseTest extends ResponseTestCase
         $response->prepare(new Request());
 
         $this->assertEquals('text/css; charset=UTF-8', $response->headers->get('Content-Type'));
+    }
+
+    public function testContentTypeIsNull()
+    {
+        $response = new Response('foo');
+        $response->headers->set('Content-Type', null);
+
+        $response->prepare(new Request());
+
+        $this->expectNotToPerformAssertions();
     }
 
     public function testPrepareDoesNothingIfContentTypeIsSet()
@@ -463,6 +575,20 @@ class ResponseTest extends ResponseTestCase
         $response->prepare(new Request());
 
         $this->assertEquals('text/html; charset=UTF-8', $response->headers->get('content-type'));
+    }
+
+    /**
+     * Same URL cannot produce different Content-Type based on the value of the Accept header,
+     * unless explicitly stated in the response object.
+     */
+    public function testPrepareDoesNotSetContentTypeBasedOnRequestAcceptHeader()
+    {
+        $response = new Response('foo');
+        $request = Request::create('/');
+        $request->headers->set('Accept', 'application/json');
+        $response->prepare($request);
+
+        $this->assertSame('text/html; charset=UTF-8', $response->headers->get('content-type'));
     }
 
     public function testPrepareSetContentType()
@@ -499,7 +625,6 @@ class ResponseTest extends ResponseTestCase
         $response->prepare($request);
         $this->assertEquals('', $response->getContent());
         $this->assertFalse($response->headers->has('Content-Type'));
-        $this->assertFalse($response->headers->has('Content-Type'));
 
         $response->setContent('content');
         $response->setStatusCode(304);
@@ -533,6 +658,12 @@ class ResponseTest extends ResponseTestCase
         $this->assertEquals('no-cache', $response->headers->get('pragma'));
         $this->assertEquals('-1', $response->headers->get('expires'));
 
+        $response = new Response('foo');
+        $response->headers->remove('cache-control');
+        $response->prepare($request);
+        $this->assertFalse($response->headers->has('pragma'));
+        $this->assertFalse($response->headers->has('expires'));
+
         $request->server->set('SERVER_PROTOCOL', 'HTTP/1.1');
         $response = new Response('foo');
         $response->prepare($request);
@@ -540,53 +671,96 @@ class ResponseTest extends ResponseTestCase
         $this->assertFalse($response->headers->has('expires'));
     }
 
+    public function testPrepareSetsCookiesSecure()
+    {
+        $cookie = Cookie::create('foo', 'bar');
+
+        $response = new Response('foo');
+        $response->headers->setCookie($cookie);
+
+        $request = Request::create('/', 'GET');
+        $response->prepare($request);
+
+        $this->assertFalse($cookie->isSecure());
+
+        $request = Request::create('https://localhost/', 'GET');
+        $response->prepare($request);
+
+        $this->assertTrue($cookie->isSecure());
+    }
+
     public function testSetCache()
     {
         $response = new Response();
-        //array('etag', 'last_modified', 'max_age', 's_maxage', 'private', 'public')
+        // ['etag', 'last_modified', 'max_age', 's_maxage', 'private', 'public']
         try {
-            $response->setCache(array("wrong option" => "value"));
+            $response->setCache(['wrong option' => 'value']);
             $this->fail('->setCache() throws an InvalidArgumentException if an option is not supported');
         } catch (\Exception $e) {
-            $this->assertInstanceOf('InvalidArgumentException', $e, '->setCache() throws an InvalidArgumentException if an option is not supported');
-            $this->assertContains('"wrong option"', $e->getMessage());
+            $this->assertInstanceOf(\InvalidArgumentException::class, $e, '->setCache() throws an InvalidArgumentException if an option is not supported');
+            $this->assertStringContainsString('"wrong option"', $e->getMessage());
         }
 
-        $options = array('etag' => '"whatever"');
+        $options = ['etag' => '"whatever"'];
         $response->setCache($options);
-        $this->assertEquals($response->getEtag(), '"whatever"');
+        $this->assertEquals('"whatever"', $response->getEtag());
 
-        $now = new \DateTime();
-        $options = array('last_modified' => $now);
+        $now = $this->createDateTimeNow();
+        $options = ['last_modified' => $now];
         $response->setCache($options);
-        $this->assertEquals($response->getLastModified()->getTimestamp(), $now->getTimestamp());
+        $this->assertEquals($now->getTimestamp(), $response->getLastModified()->getTimestamp());
 
-        $options = array('max_age' => 100);
+        $options = ['max_age' => 100];
         $response->setCache($options);
-        $this->assertEquals($response->getMaxAge(), 100);
+        $this->assertEquals(100, $response->getMaxAge());
 
-        $options = array('s_maxage' => 200);
+        $options = ['s_maxage' => 200];
         $response->setCache($options);
-        $this->assertEquals($response->getMaxAge(), 200);
+        $this->assertEquals(200, $response->getMaxAge());
 
         $this->assertTrue($response->headers->hasCacheControlDirective('public'));
         $this->assertFalse($response->headers->hasCacheControlDirective('private'));
 
-        $response->setCache(array('public' => true));
+        $response->setCache(['public' => true]);
         $this->assertTrue($response->headers->hasCacheControlDirective('public'));
         $this->assertFalse($response->headers->hasCacheControlDirective('private'));
 
-        $response->setCache(array('public' => false));
+        $response->setCache(['public' => false]);
         $this->assertFalse($response->headers->hasCacheControlDirective('public'));
         $this->assertTrue($response->headers->hasCacheControlDirective('private'));
 
-        $response->setCache(array('private' => true));
+        $response->setCache(['private' => true]);
         $this->assertFalse($response->headers->hasCacheControlDirective('public'));
         $this->assertTrue($response->headers->hasCacheControlDirective('private'));
 
-        $response->setCache(array('private' => false));
+        $response->setCache(['private' => false]);
         $this->assertTrue($response->headers->hasCacheControlDirective('public'));
         $this->assertFalse($response->headers->hasCacheControlDirective('private'));
+
+        $response->setCache(['immutable' => true]);
+        $this->assertTrue($response->headers->hasCacheControlDirective('immutable'));
+
+        $response->setCache(['immutable' => false]);
+        $this->assertFalse($response->headers->hasCacheControlDirective('immutable'));
+
+        $directives = ['proxy_revalidate', 'must_revalidate', 'no_cache', 'no_store', 'no_transform'];
+        foreach ($directives as $directive) {
+            $response->setCache([$directive => true]);
+
+            $this->assertTrue($response->headers->hasCacheControlDirective(str_replace('_', '-', $directive)));
+        }
+
+        foreach ($directives as $directive) {
+            $response->setCache([$directive => false]);
+
+            $this->assertFalse($response->headers->hasCacheControlDirective(str_replace('_', '-', $directive)));
+        }
+
+        $response = new DefaultResponse();
+
+        $options = ['etag' => '"whatever"'];
+        $response->setCache($options);
+        $this->assertSame($response->getEtag(), '"whatever"');
     }
 
     public function testSendContent()
@@ -596,7 +770,7 @@ class ResponseTest extends ResponseTestCase
         ob_start();
         $response->sendContent();
         $string = ob_get_clean();
-        $this->assertContains('test response rendering', $string);
+        $this->assertStringContainsString('test response rendering', $string);
     }
 
     public function testSetPublic()
@@ -608,6 +782,38 @@ class ResponseTest extends ResponseTestCase
         $this->assertFalse($response->headers->hasCacheControlDirective('private'));
     }
 
+    public function testSetImmutable()
+    {
+        $response = new Response();
+        $response->setImmutable();
+
+        $this->assertTrue($response->headers->hasCacheControlDirective('immutable'));
+    }
+
+    public function testIsImmutable()
+    {
+        $response = new Response();
+        $response->setImmutable();
+
+        $this->assertTrue($response->isImmutable());
+    }
+
+    public function testSetDate()
+    {
+        $response = new Response();
+        $response->setDate(\DateTime::createFromFormat(\DateTimeInterface::ATOM, '2013-01-26T09:21:56+0100', new \DateTimeZone('Europe/Berlin')));
+
+        $this->assertEquals('2013-01-26T08:21:56+00:00', $response->getDate()->format(\DateTimeInterface::ATOM));
+    }
+
+    public function testSetDateWithImmutable()
+    {
+        $response = new Response();
+        $response->setDate(\DateTimeImmutable::createFromFormat(\DateTimeInterface::ATOM, '2013-01-26T09:21:56+0100', new \DateTimeZone('Europe/Berlin')));
+
+        $this->assertEquals('2013-01-26T08:21:56+00:00', $response->getDate()->format(\DateTimeInterface::ATOM));
+    }
+
     public function testSetExpires()
     {
         $response = new Response();
@@ -615,7 +821,17 @@ class ResponseTest extends ResponseTestCase
 
         $this->assertNull($response->getExpires(), '->setExpires() remove the header when passed null');
 
-        $now = new \DateTime();
+        $now = $this->createDateTimeNow();
+        $response->setExpires($now);
+
+        $this->assertEquals($response->getExpires()->getTimestamp(), $now->getTimestamp());
+    }
+
+    public function testSetExpiresWithImmutable()
+    {
+        $response = new Response();
+
+        $now = $this->createDateTimeImmutableNow();
         $response->setExpires($now);
 
         $this->assertEquals($response->getExpires()->getTimestamp(), $now->getTimestamp());
@@ -624,7 +840,17 @@ class ResponseTest extends ResponseTestCase
     public function testSetLastModified()
     {
         $response = new Response();
-        $response->setLastModified(new \DateTime());
+        $response->setLastModified($this->createDateTimeNow());
+        $this->assertNotNull($response->getLastModified());
+
+        $response->setLastModified(null);
+        $this->assertNull($response->getLastModified());
+    }
+
+    public function testSetLastModifiedWithImmutable()
+    {
+        $response = new Response();
+        $response->setLastModified($this->createDateTimeImmutableNow());
         $this->assertNotNull($response->getLastModified());
 
         $response->setLastModified(null);
@@ -663,21 +889,20 @@ class ResponseTest extends ResponseTestCase
         $response->setStatusCode($code, $text);
 
         $statusText = new \ReflectionProperty($response, 'statusText');
-        $statusText->setAccessible(true);
 
         $this->assertEquals($expectedText, $statusText->getValue($response));
     }
 
-    public function getStatusCodeFixtures()
+    public static function getStatusCodeFixtures()
     {
-        return array(
-            array('200', null, 'OK'),
-            array('200', false, ''),
-            array('200', 'foo', 'foo'),
-            array('199', null, ''),
-            array('199', false, ''),
-            array('199', 'foo', 'foo'),
-        );
+        return [
+            ['200', null, 'OK'],
+            ['200', false, ''],
+            ['200', 'foo', 'foo'],
+            ['199', null, 'unknown status'],
+            ['199', false, ''],
+            ['199', 'foo', 'foo'],
+        ];
     }
 
     public function testIsInformational()
@@ -691,7 +916,7 @@ class ResponseTest extends ResponseTestCase
 
     public function testIsRedirectRedirection()
     {
-        foreach (array(301, 302, 303, 307) as $code) {
+        foreach ([301, 302, 303, 307] as $code) {
             $response = new Response('', $code);
             $this->assertTrue($response->isRedirection());
             $this->assertTrue($response->isRedirect());
@@ -709,7 +934,7 @@ class ResponseTest extends ResponseTestCase
         $this->assertFalse($response->isRedirection());
         $this->assertFalse($response->isRedirect());
 
-        $response = new Response('', 301, array('Location' => '/good-uri'));
+        $response = new Response('', 301, ['Location' => '/good-uri']);
         $this->assertFalse($response->isRedirect('/bad-uri'));
         $this->assertTrue($response->isRedirect('/good-uri'));
     }
@@ -725,7 +950,7 @@ class ResponseTest extends ResponseTestCase
 
     public function testIsEmpty()
     {
-        foreach (array(204, 304) as $code) {
+        foreach ([204, 304] as $code) {
             $response = new Response('', $code);
             $this->assertTrue($response->isEmpty());
         }
@@ -774,8 +999,8 @@ class ResponseTest extends ResponseTestCase
 
     public function testSetEtag()
     {
-        $response = new Response('', 200, array('ETag' => '"12345"'));
-        $response->setEtag();
+        $response = new Response('', 200, ['ETag' => '"12345"']);
+        $response->setEtag(null);
 
         $this->assertNull($response->headers->get('Etag'), '->setEtag() removes Etags when call with null');
     }
@@ -790,85 +1015,154 @@ class ResponseTest extends ResponseTestCase
         $this->assertEquals((string) $content, $response->getContent());
     }
 
-    /**
-     * @expectedException \UnexpectedValueException
-     * @dataProvider invalidContentProvider
-     */
-    public function testSetContentInvalid($content)
-    {
-        $response = new Response();
-        $response->setContent($content);
-    }
-
     public function testSettersAreChainable()
     {
         $response = new Response();
 
-        $setters = array(
+        $setters = [
             'setProtocolVersion' => '1.0',
             'setCharset' => 'UTF-8',
             'setPublic' => null,
             'setPrivate' => null,
-            'setDate' => new \DateTime(),
+            'setDate' => $this->createDateTimeNow(),
             'expire' => null,
             'setMaxAge' => 1,
             'setSharedMaxAge' => 1,
             'setTtl' => 1,
             'setClientTtl' => 1,
-        );
+        ];
 
         foreach ($setters as $setter => $arg) {
             $this->assertEquals($response, $response->{$setter}($arg));
         }
     }
 
-    public function validContentProvider()
+    public function testNoDeprecationsAreTriggered()
     {
-        return array(
-            'obj' => array(new StringableObject()),
-            'string' => array('Foo'),
-            'int' => array(2),
-        );
+        new DefaultResponse();
+        $this->createMock(Response::class);
+
+        // we just need to ensure that subclasses of Response can be created without any deprecations
+        // being triggered if the subclass does not override any final methods
+        $this->addToAssertionCount(1);
     }
 
-    public function invalidContentProvider()
+    public static function validContentProvider()
     {
-        return array(
-            'obj' => array(new \stdClass()),
-            'array' => array(array()),
-            'bool' => array(true, '1'),
-        );
+        return [
+            'obj' => [new StringableObject()],
+            'string' => ['Foo'],
+            'int' => [2],
+        ];
     }
 
     protected function createDateTimeOneHourAgo()
     {
-        $date = new \DateTime();
-
-        return $date->sub(new \DateInterval('PT1H'));
+        return $this->createDateTimeNow()->sub(new \DateInterval('PT1H'));
     }
 
     protected function createDateTimeOneHourLater()
     {
-        $date = new \DateTime();
-
-        return $date->add(new \DateInterval('PT1H'));
+        return $this->createDateTimeNow()->add(new \DateInterval('PT1H'));
     }
 
     protected function createDateTimeNow()
     {
-        return new \DateTime();
+        $date = new \DateTime();
+
+        return $date->setTimestamp(time());
+    }
+
+    protected function createDateTimeImmutableNow()
+    {
+        $date = new \DateTimeImmutable();
+
+        return $date->setTimestamp(time());
     }
 
     protected function provideResponse()
     {
         return new Response();
     }
+
+    /**
+     * @see http://github.com/zendframework/zend-diactoros for the canonical source repository
+     *
+     * @author Fábio Pacheco
+     * @copyright Copyright (c) 2015-2016 Zend Technologies USA Inc. (http://www.zend.com)
+     * @license https://github.com/zendframework/zend-diactoros/blob/master/LICENSE.md New BSD License
+     */
+    public static function ianaCodesReasonPhrasesProvider()
+    {
+        // XML taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xml
+        // (might not be up-to-date for older Symfony versions)
+        $ianaHttpStatusCodes = new \DOMDocument();
+        $ianaHttpStatusCodes->load(__DIR__.'/Fixtures/xml/http-status-codes.xml');
+        if (!$ianaHttpStatusCodes->relaxNGValidate(__DIR__.'/schema/http-status-codes.rng')) {
+            self::fail('Invalid IANA\'s HTTP status code list.');
+        }
+
+        $ianaCodesReasonPhrases = [];
+
+        $xpath = new \DOMXPath($ianaHttpStatusCodes);
+        $xpath->registerNamespace('ns', 'http://www.iana.org/assignments');
+
+        $records = $xpath->query('//ns:record');
+        foreach ($records as $record) {
+            $value = $xpath->query('.//ns:value', $record)->item(0)->nodeValue;
+            $description = $xpath->query('.//ns:description', $record)->item(0)->nodeValue;
+
+            if (\in_array($description, ['Unassigned', '(Unused)'], true)) {
+                continue;
+            }
+
+            if (preg_match('/^([0-9]+)\s*\-\s*([0-9]+)$/', $value, $matches)) {
+                for ($value = $matches[1]; $value <= $matches[2]; ++$value) {
+                    $ianaCodesReasonPhrases[] = [$value, $description];
+                }
+            } else {
+                $ianaCodesReasonPhrases[] = [$value, $description];
+            }
+        }
+
+        return $ianaCodesReasonPhrases;
+    }
+
+    /**
+     * @dataProvider ianaCodesReasonPhrasesProvider
+     */
+    public function testReasonPhraseDefaultsAgainstIana($code, $reasonPhrase)
+    {
+        $this->assertEquals($reasonPhrase, Response::$statusTexts[$code]);
+    }
+
+    public function testSetContentSafe()
+    {
+        $response = new Response();
+
+        $this->assertFalse($response->headers->has('Preference-Applied'));
+        $this->assertFalse($response->headers->has('Vary'));
+
+        $response->setContentSafe();
+
+        $this->assertSame('safe', $response->headers->get('Preference-Applied'));
+        $this->assertSame('Prefer', $response->headers->get('Vary'));
+
+        $response->setContentSafe(false);
+
+        $this->assertFalse($response->headers->has('Preference-Applied'));
+        $this->assertSame('Prefer', $response->headers->get('Vary'));
+    }
 }
 
 class StringableObject
 {
-    public function __toString()
+    public function __toString(): string
     {
         return 'Foo';
     }
+}
+
+class DefaultResponse extends Response
+{
 }

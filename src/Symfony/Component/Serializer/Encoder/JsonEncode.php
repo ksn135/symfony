@@ -11,7 +11,7 @@
 
 namespace Symfony\Component\Serializer\Encoder;
 
-use Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use Symfony\Component\Serializer\Exception\NotEncodableValueException;
 
 /**
  * Encodes JSON data.
@@ -20,63 +20,43 @@ use Symfony\Component\Serializer\Exception\UnexpectedValueException;
  */
 class JsonEncode implements EncoderInterface
 {
-    private $options;
-    private $lastError = JSON_ERROR_NONE;
+    /**
+     * Configure the JSON flags bitmask.
+     */
+    public const OPTIONS = 'json_encode_options';
 
-    public function __construct($bitmask = 0)
+    private array $defaultContext = [
+        self::OPTIONS => \JSON_PRESERVE_ZERO_FRACTION,
+    ];
+
+    public function __construct(array $defaultContext = [])
     {
-        $this->options = $bitmask;
+        $this->defaultContext = array_merge($this->defaultContext, $defaultContext);
     }
 
-    /**
-     * Returns the last encoding error (if any).
-     *
-     * @return int
-     *
-     * @deprecated since 2.5, encode() throws an exception if error found, will be removed in 3.0
-     *
-     * @see http://php.net/manual/en/function.json-last-error.php json_last_error
-     */
-    public function getLastError()
+    public function encode(mixed $data, string $format, array $context = []): string
     {
-        return $this->lastError;
-    }
+        $options = $context[self::OPTIONS] ?? $this->defaultContext[self::OPTIONS];
 
-    /**
-     * Encodes PHP data to a JSON string.
-     *
-     * {@inheritdoc}
-     */
-    public function encode($data, $format, array $context = array())
-    {
-        $context = $this->resolveContext($context);
+        try {
+            $encodedJson = json_encode($data, $options);
+        } catch (\JsonException $e) {
+            throw new NotEncodableValueException($e->getMessage(), 0, $e);
+        }
 
-        $encodedJson = json_encode($data, $context['json_encode_options']);
+        if (\JSON_THROW_ON_ERROR & $options) {
+            return $encodedJson;
+        }
 
-        if (JSON_ERROR_NONE !== $this->lastError = json_last_error()) {
-            throw new UnexpectedValueException(JsonEncoder::getLastErrorMessage());
+        if (\JSON_ERROR_NONE !== json_last_error() && (false === $encodedJson || !($options & \JSON_PARTIAL_OUTPUT_ON_ERROR))) {
+            throw new NotEncodableValueException(json_last_error_msg());
         }
 
         return $encodedJson;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function supportsEncoding($format)
+    public function supportsEncoding(string $format): bool
     {
         return JsonEncoder::FORMAT === $format;
-    }
-
-    /**
-     * Merge default json encode options with context.
-     *
-     * @param array $context
-     *
-     * @return array
-     */
-    private function resolveContext(array $context = array())
-    {
-        return array_merge(array('json_encode_options' => $this->options), $context);
     }
 }

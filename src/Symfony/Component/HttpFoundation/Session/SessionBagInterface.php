@@ -19,30 +19,24 @@ namespace Symfony\Component\HttpFoundation\Session;
 interface SessionBagInterface
 {
     /**
-     * Gets this bag's name
-     *
-     * @return string
+     * Gets this bag's name.
      */
-    public function getName();
+    public function getName(): string;
 
     /**
-     * Initializes the Bag
-     *
-     * @param array $array
+     * Initializes the Bag.
      */
-    public function initialize(array &$array);
+    public function initialize(array &$array): void;
 
     /**
      * Gets the storage key for this bag.
-     *
-     * @return string
      */
-    public function getStorageKey();
+    public function getStorageKey(): string;
 
     /**
      * Clears out data from bag.
      *
-     * @return mixed Whatever data was contained.
+     * @return mixed Whatever data was contained
      */
-    public function clear();
+    public function clear(): mixed;
 }

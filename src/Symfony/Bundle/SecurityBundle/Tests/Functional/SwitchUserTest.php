@@ -11,17 +11,17 @@
 
 namespace Symfony\Bundle\SecurityBundle\Tests\Functional;
 
-/**
- * @group functional
- */
-class SwitchUserTest extends WebTestCase
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Security\Http\Firewall\SwitchUserListener;
+
+class SwitchUserTest extends AbstractWebTestCase
 {
     /**
      * @dataProvider getTestParameters
      */
     public function testSwitchUser($originalUser, $targetUser, $expectedUser, $expectedStatus)
     {
-        $client = $this->createAuthenticatedClient($originalUser);
+        $client = $this->createAuthenticatedClient($originalUser, ['root_config' => 'switchuser.yml']);
 
         $client->request('GET', '/profile?_switch_user='.$targetUser);
 
@@ -29,15 +29,15 @@ class SwitchUserTest extends WebTestCase
         $this->assertEquals($expectedUser, $client->getProfile()->getCollector('security')->getUser());
     }
 
-    public function testSwitchedUserCannotSwitchToOther()
+    public function testSwitchedUserCanSwitchToOther()
     {
         $client = $this->createAuthenticatedClient('user_can_switch');
 
         $client->request('GET', '/profile?_switch_user=user_cannot_switch_1');
         $client->request('GET', '/profile?_switch_user=user_cannot_switch_2');
 
-        $this->assertEquals(500, $client->getResponse()->getStatusCode());
-        $this->assertEquals('user_cannot_switch_1', $client->getProfile()->getCollector('security')->getUser());
+        $this->assertEquals(200, $client->getResponse()->getStatusCode());
+        $this->assertEquals('user_cannot_switch_2', $client->getProfile()->getCollector('security')->getUser());
     }
 
     public function testSwitchedUserExit()
@@ -45,27 +45,38 @@ class SwitchUserTest extends WebTestCase
         $client = $this->createAuthenticatedClient('user_can_switch');
 
         $client->request('GET', '/profile?_switch_user=user_cannot_switch_1');
-        $client->request('GET', '/profile?_switch_user=_exit');
+        $client->request('GET', '/profile?_switch_user='.SwitchUserListener::EXIT_VALUE);
 
         $this->assertEquals(200, $client->getResponse()->getStatusCode());
         $this->assertEquals('user_can_switch', $client->getProfile()->getCollector('security')->getUser());
     }
 
-    public function getTestParameters()
+    public function testSwitchUserStateless()
     {
-        return array(
-            'unauthorized_user_cannot_switch' => array('user_cannot_switch_1', 'user_cannot_switch_1', 'user_cannot_switch_1', 403),
-            'authorized_user_can_switch' => array('user_can_switch', 'user_cannot_switch_1', 'user_cannot_switch_1', 200),
-            'authorized_user_cannot_switch_to_non_existent' => array('user_can_switch', 'user_does_not_exist', 'user_can_switch', 500),
-            'authorized_user_can_switch_to_himself' => array('user_can_switch', 'user_can_switch', 'user_can_switch', 200),
-        );
+        $client = $this->createClient(['test_case' => 'JsonLogin', 'root_config' => 'switchuser_stateless.yml']);
+        $client->request('POST', '/chk', [], [], ['HTTP_X_SWITCH_USER' => 'dunglas', 'CONTENT_TYPE' => 'application/json'], '{"user": {"login": "user_can_switch", "password": "test"}}');
+        $response = $client->getResponse();
+
+        $this->assertInstanceOf(JsonResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(['message' => 'Welcome @dunglas!'], json_decode($response->getContent(), true));
+        $this->assertSame('dunglas', $client->getProfile()->getCollector('security')->getUser());
     }
 
-    protected function createAuthenticatedClient($username)
+    public static function getTestParameters()
     {
-        $client = $this->createClient(array('test_case' => 'StandardFormLogin', 'root_config' => 'switchuser.yml'));
+        return [
+            'unauthorized_user_cannot_switch' => ['user_cannot_switch_1', 'user_cannot_switch_1', 'user_cannot_switch_1', 403],
+            'authorized_user_can_switch' => ['user_can_switch', 'user_cannot_switch_1', 'user_cannot_switch_1', 200],
+            'authorized_user_cannot_switch_to_non_existent' => ['user_can_switch', 'user_does_not_exist', 'user_can_switch', 403],
+            'authorized_user_can_switch_to_himself' => ['user_can_switch', 'user_can_switch', 'user_can_switch', 200],
+        ];
+    }
+
+    protected function createAuthenticatedClient($username, array $options = [])
+    {
+        $client = $this->createClient(['test_case' => 'StandardFormLogin', 'root_config' => 'switchuser.yml'] + $options);
         $client->followRedirects(true);
-        $client->insulate();
 
         $form = $client->request('GET', '/login')->selectButton('login')->form();
         $form['_username'] = $username;
@@ -73,19 +84,5 @@ class SwitchUserTest extends WebTestCase
         $client->submit($form);
 
         return $client;
-    }
-
-    protected function setUp()
-    {
-        parent::setUp();
-
-        $this->deleteTmpDir('StandardFormLogin');
-    }
-
-    protected function tearDown()
-    {
-        parent::tearDown();
-
-        $this->deleteTmpDir('StandardFormLogin');
     }
 }

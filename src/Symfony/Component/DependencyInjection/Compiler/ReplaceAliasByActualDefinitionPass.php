@@ -13,6 +13,7 @@ namespace Symfony\Component\DependencyInjection\Compiler;
 
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
+use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\DependencyInjection\Reference;
 
 /**
@@ -21,105 +22,80 @@ use Symfony\Component\DependencyInjection\Reference;
  *
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
  */
-class ReplaceAliasByActualDefinitionPass implements CompilerPassInterface
+class ReplaceAliasByActualDefinitionPass extends AbstractRecursivePass
 {
-    private $compiler;
-    private $formatter;
-    private $sourceId;
+    protected bool $skipScalars = true;
+
+    private array $replacements;
 
     /**
      * Process the Container to replace aliases with service definitions.
      *
-     * @param ContainerBuilder $container
-     *
      * @throws InvalidArgumentException if the service definition does not exist
      */
-    public function process(ContainerBuilder $container)
+    public function process(ContainerBuilder $container): void
     {
-        $this->compiler = $container->getCompiler();
-        $this->formatter = $this->compiler->getLoggingFormatter();
+        // First collect all alias targets that need to be replaced
+        $seenAliasTargets = [];
+        $replacements = [];
 
-        foreach ($container->getAliases() as $id => $alias) {
-            $aliasId = (string) $alias;
-
-            try {
-                $definition = $container->getDefinition($aliasId);
-            } catch (InvalidArgumentException $e) {
-                throw new InvalidArgumentException(sprintf('Unable to replace alias "%s" with "%s".', $alias, $id), null, $e);
+        foreach ($container->getAliases() as $definitionId => $target) {
+            $targetId = (string) $target;
+            // Special case: leave this target alone
+            if ('service_container' === $targetId) {
+                continue;
             }
+            // Check if target needs to be replaced
+            if (isset($replacements[$targetId])) {
+                $container->setAlias($definitionId, $replacements[$targetId])->setPublic($target->isPublic());
 
+                if ($target->isDeprecated()) {
+                    $container->getAlias($definitionId)->setDeprecated(...array_values($target->getDeprecation('%alias_id%')));
+                }
+            }
+            // No need to process the same target twice
+            if (isset($seenAliasTargets[$targetId])) {
+                continue;
+            }
+            // Process new target
+            $seenAliasTargets[$targetId] = true;
+            try {
+                $definition = $container->getDefinition($targetId);
+            } catch (ServiceNotFoundException $e) {
+                if ('' !== $e->getId() && '@' === $e->getId()[0]) {
+                    throw new ServiceNotFoundException($e->getId(), $e->getSourceId(), null, [substr($e->getId(), 1)]);
+                }
+
+                throw $e;
+            }
             if ($definition->isPublic()) {
                 continue;
             }
+            // Remove private definition and schedule for replacement
+            $definition->setPublic($target->isPublic());
+            $container->setDefinition($definitionId, $definition);
+            $container->removeDefinition($targetId);
+            $replacements[$targetId] = $definitionId;
 
-            $definition->setPublic(true);
-            $container->setDefinition($id, $definition);
-            $container->removeDefinition($aliasId);
-
-            $this->updateReferences($container, $aliasId, $id);
-
-            // we have to restart the process due to concurrent modification of
-            // the container
-            $this->process($container);
-
-            break;
-        }
-    }
-
-    /**
-     * Updates references to remove aliases.
-     *
-     * @param ContainerBuilder $container The container
-     * @param string           $currentId The alias identifier being replaced
-     * @param string           $newId     The id of the service the alias points to
-     */
-    private function updateReferences($container, $currentId, $newId)
-    {
-        foreach ($container->getAliases() as $id => $alias) {
-            if ($currentId === (string) $alias) {
-                $container->setAlias($id, $newId);
+            if ($target->isPublic() && $target->isDeprecated()) {
+                $definition->addTag('container.private', $target->getDeprecation('%service_id%'));
             }
         }
+        $this->replacements = $replacements;
 
-        foreach ($container->getDefinitions() as $id => $definition) {
-            $this->sourceId = $id;
-
-            $definition->setArguments(
-                $this->updateArgumentReferences($definition->getArguments(), $currentId, $newId)
-            );
-
-            $definition->setMethodCalls(
-                $this->updateArgumentReferences($definition->getMethodCalls(), $currentId, $newId)
-            );
-
-            $definition->setProperties(
-                $this->updateArgumentReferences($definition->getProperties(), $currentId, $newId)
-            );
-        }
+        parent::process($container);
+        $this->replacements = [];
     }
 
-    /**
-     * Updates argument references.
-     *
-     * @param array  $arguments An array of Arguments
-     * @param string $currentId The alias identifier
-     * @param string $newId     The identifier the alias points to
-     *
-     * @return array
-     */
-    private function updateArgumentReferences(array $arguments, $currentId, $newId)
+    protected function processValue(mixed $value, bool $isRoot = false): mixed
     {
-        foreach ($arguments as $k => $argument) {
-            if (is_array($argument)) {
-                $arguments[$k] = $this->updateArgumentReferences($argument, $currentId, $newId);
-            } elseif ($argument instanceof Reference) {
-                if ($currentId === (string) $argument) {
-                    $arguments[$k] = new Reference($newId, $argument->getInvalidBehavior());
-                    $this->compiler->addLogMessage($this->formatter->formatUpdateReference($this, $this->sourceId, $currentId, $newId));
-                }
-            }
+        if ($value instanceof Reference && isset($this->replacements[$referenceId = (string) $value])) {
+            // Perform the replacement
+            $newId = $this->replacements[$referenceId];
+            $value = new Reference($newId, $value->getInvalidBehavior());
+            $this->container->log($this, sprintf('Changed reference of service "%s" previously pointing to "%s" to "%s".', $this->currentId, $referenceId, $newId));
         }
 
-        return $arguments;
+        return parent::processValue($value, $isRoot);
     }
 }

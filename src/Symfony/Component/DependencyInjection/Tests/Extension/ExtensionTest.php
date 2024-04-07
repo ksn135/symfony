@@ -11,71 +11,84 @@
 
 namespace Symfony\Component\DependencyInjection\Tests\Extension;
 
-class ExtensionTest extends \PHPUnit_Framework_TestCase
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
+use Symfony\Component\DependencyInjection\Exception\LogicException;
+use Symfony\Component\DependencyInjection\Extension\Extension;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\Extension\InvalidConfig\InvalidConfigExtension;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\Extension\SemiValidConfig\SemiValidConfigExtension;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\Extension\ValidConfig\Configuration;
+use Symfony\Component\DependencyInjection\Tests\Fixtures\Extension\ValidConfig\ValidConfigExtension;
+
+class ExtensionTest extends TestCase
 {
     /**
      * @dataProvider getResolvedEnabledFixtures
      */
     public function testIsConfigEnabledReturnsTheResolvedValue($enabled)
     {
-        $pb = $this->getMockBuilder('Symfony\Component\DependencyInjection\ParameterBag\ParameterBag')
-            ->setMethods(array('resolveValue'))
-            ->getMock()
-        ;
-
-        $container = $this->getMockBuilder('Symfony\Component\DependencyInjection\ContainerBuilder')
-            ->setMethods(array('getParameterBag'))
-            ->getMock()
-        ;
-
-        $pb->expects($this->once())
-            ->method('resolveValue')
-            ->with($this->equalTo($enabled))
-            ->will($this->returnValue($enabled))
-        ;
-
-        $container->expects($this->once())
-            ->method('getParameterBag')
-            ->will($this->returnValue($pb))
-        ;
-
-        $extension = $this->getMockBuilder('Symfony\Component\DependencyInjection\Extension\Extension')
-            ->setMethods(array())
-            ->getMockForAbstractClass()
-        ;
-
-        $r = new \ReflectionMethod('Symfony\Component\DependencyInjection\Extension\Extension', 'isConfigEnabled');
-        $r->setAccessible(true);
-
-        $r->invoke($extension, $container, array('enabled' => $enabled));
+        $extension = new EnableableExtension();
+        $this->assertSame($enabled, $extension->isConfigEnabled(new ContainerBuilder(), ['enabled' => $enabled]));
     }
 
-    public function getResolvedEnabledFixtures()
+    public static function getResolvedEnabledFixtures()
     {
-        return array(
-            array(true),
-            array(false),
-        );
+        return [
+            [true],
+            [false],
+        ];
     }
 
-    /**
-     * @expectedException \Symfony\Component\DependencyInjection\Exception\InvalidArgumentException
-     * @expectedExceptionMessage The config array has no 'enabled' key.
-     */
     public function testIsConfigEnabledOnNonEnableableConfig()
     {
-        $container = $this->getMockBuilder('Symfony\Component\DependencyInjection\ContainerBuilder')
-            ->getMock()
-        ;
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The config array has no \'enabled\' key.');
+        $extension = new EnableableExtension();
 
-        $extension = $this->getMockBuilder('Symfony\Component\DependencyInjection\Extension\Extension')
-            ->setMethods(array())
-            ->getMockForAbstractClass()
-        ;
+        $extension->isConfigEnabled(new ContainerBuilder(), []);
+    }
 
-        $r = new \ReflectionMethod('Symfony\Component\DependencyInjection\Extension\Extension', 'isConfigEnabled');
-        $r->setAccessible(true);
+    public function testNoConfiguration()
+    {
+        $extension = new EnableableExtension();
 
-        $r->invoke($extension, $container, array());
+        $this->assertNull($extension->getConfiguration([], new ContainerBuilder()));
+    }
+
+    public function testValidConfiguration()
+    {
+        $extension = new ValidConfigExtension();
+
+        $this->assertInstanceOf(Configuration::class, $extension->getConfiguration([], new ContainerBuilder()));
+    }
+
+    public function testSemiValidConfiguration()
+    {
+        $extension = new SemiValidConfigExtension();
+
+        $this->assertNull($extension->getConfiguration([], new ContainerBuilder()));
+    }
+
+    public function testInvalidConfiguration()
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('The extension configuration class "Symfony\\Component\\DependencyInjection\\Tests\\Fixtures\\Extension\\InvalidConfig\\Configuration" must implement "Symfony\\Component\\Config\\Definition\\ConfigurationInterface".');
+
+        $extension = new InvalidConfigExtension();
+
+        $extension->getConfiguration([], new ContainerBuilder());
+    }
+}
+
+class EnableableExtension extends Extension
+{
+    public function load(array $configs, ContainerBuilder $container): void
+    {
+    }
+
+    public function isConfigEnabled(ContainerBuilder $container, array $config): bool
+    {
+        return parent::isConfigEnabled($container, $config);
     }
 }

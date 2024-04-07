@@ -11,56 +11,54 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Command;
 
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Routing\RouterInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\ExpressionLanguage\ExpressionFunctionProviderInterface;
 use Symfony\Component\Routing\Matcher\TraceableUrlMatcher;
+use Symfony\Component\Routing\RouterInterface;
 
 /**
  * A console command to test route matching.
  *
  * @author Fabien Potencier <fabien@symfony.com>
+ *
+ * @final
  */
-class RouterMatchCommand extends ContainerAwareCommand
+#[AsCommand(name: 'router:match', description: 'Help debug routes by simulating a path info match')]
+class RouterMatchCommand extends Command
 {
     /**
-     * {@inheritdoc}
+     * @param iterable<mixed, ExpressionFunctionProviderInterface> $expressionLanguageProviders
      */
-    public function isEnabled()
-    {
-        if (!$this->getContainer()->has('router')) {
-            return false;
-        }
-        $router = $this->getContainer()->get('router');
-        if (!$router instanceof RouterInterface) {
-            return false;
-        }
-
-        return parent::isEnabled();
+    public function __construct(
+        private RouterInterface $router,
+        private iterable $expressionLanguageProviders = [],
+    ) {
+        parent::__construct();
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function configure()
+    protected function configure(): void
     {
         $this
-            ->setName('router:match')
-            ->setDefinition(array(
+            ->setDefinition([
                 new InputArgument('path_info', InputArgument::REQUIRED, 'A path info'),
-                new InputOption('method', null, InputOption::VALUE_REQUIRED, 'Sets the HTTP method'),
-                new InputOption('scheme', null, InputOption::VALUE_REQUIRED, 'Sets the URI scheme (usually http or https)'),
-                new InputOption('host', null, InputOption::VALUE_REQUIRED, 'Sets the URI host'),
-            ))
-            ->setDescription('Helps debug routes by simulating a path info match')
-            ->setHelp(<<<EOF
+                new InputOption('method', null, InputOption::VALUE_REQUIRED, 'Set the HTTP method'),
+                new InputOption('scheme', null, InputOption::VALUE_REQUIRED, 'Set the URI scheme (usually http or https)'),
+                new InputOption('host', null, InputOption::VALUE_REQUIRED, 'Set the URI host'),
+            ])
+            ->setHelp(<<<'EOF'
 The <info>%command.name%</info> shows which routes match a given request and which don't and for what reason:
 
   <info>php %command.full_name% /foo</info>
-  or
+
+or
+
   <info>php %command.full_name% /foo --method POST --scheme https --host symfony.com --verbose</info>
 
 EOF
@@ -68,13 +66,11 @@ EOF
         ;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $router = $this->getContainer()->get('router');
-        $context = $router->getContext();
+        $io = new SymfonyStyle($input, $output);
+
+        $context = $this->router->getContext();
         if (null !== $method = $input->getOption('method')) {
             $context->setMethod($method);
         }
@@ -85,31 +81,37 @@ EOF
             $context->setHost($host);
         }
 
-        $matcher = new TraceableUrlMatcher($router->getRouteCollection(), $context);
+        $matcher = new TraceableUrlMatcher($this->router->getRouteCollection(), $context);
+        foreach ($this->expressionLanguageProviders as $provider) {
+            $matcher->addExpressionLanguageProvider($provider);
+        }
 
         $traces = $matcher->getTraces($input->getArgument('path_info'));
+
+        $io->newLine();
 
         $matches = false;
         foreach ($traces as $trace) {
             if (TraceableUrlMatcher::ROUTE_ALMOST_MATCHES == $trace['level']) {
-                $output->writeln(sprintf('<fg=yellow>Route "%s" almost matches but %s</>', $trace['name'], lcfirst($trace['log'])));
+                $io->text(sprintf('Route <info>"%s"</> almost matches but %s', $trace['name'], lcfirst($trace['log'])));
             } elseif (TraceableUrlMatcher::ROUTE_MATCHES == $trace['level']) {
-                $output->writeln(sprintf('<fg=green>Route "%s" matches</>', $trace['name']));
+                $io->success(sprintf('Route "%s" matches', $trace['name']));
 
-                $routerDebugcommand = $this->getApplication()->find('router:debug');
-                $output->writeln('');
-                $routerDebugcommand->run(new ArrayInput(array('name' => $trace['name'])), $output);
+                $routerDebugCommand = $this->getApplication()->find('debug:router');
+                $routerDebugCommand->run(new ArrayInput(['name' => $trace['name']]), $output);
 
                 $matches = true;
             } elseif ($input->getOption('verbose')) {
-                $output->writeln(sprintf('Route "%s" does not match: %s', $trace['name'], $trace['log']));
+                $io->text(sprintf('Route "%s" does not match: %s', $trace['name'], $trace['log']));
             }
         }
 
         if (!$matches) {
-            $output->writeln(sprintf('<fg=red>None of the routes match the path "%s"</>', $input->getArgument('path_info')));
+            $io->error(sprintf('None of the routes match the path "%s"', $input->getArgument('path_info')));
 
             return 1;
         }
+
+        return 0;
     }
 }

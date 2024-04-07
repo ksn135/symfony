@@ -11,56 +11,98 @@
 
 namespace Symfony\Component\HttpFoundation\Tests\Session\Storage\Handler;
 
+use MongoDB\BSON\Binary;
+use MongoDB\BSON\UTCDateTime;
+use MongoDB\Client;
+use MongoDB\Driver\BulkWrite;
+use MongoDB\Driver\Command;
+use MongoDB\Driver\Exception\CommandException;
+use MongoDB\Driver\Exception\ConnectionException;
+use MongoDB\Driver\Manager;
+use MongoDB\Driver\Query;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Session\Storage\Handler\MongoDbSessionHandler;
+
+require_once __DIR__.'/stubs/mongodb.php';
 
 /**
  * @author Markus Bachmann <markus.bachmann@bachi.biz>
+ *
+ * @group integration
+ * @group time-sensitive
+ *
+ * @requires extension mongodb
  */
-class MongoDbSessionHandlerTest extends \PHPUnit_Framework_TestCase
+class MongoDbSessionHandlerTest extends TestCase
 {
-    /**
-     * @var \PHPUnit_Framework_MockObject_MockObject
-     */
-    private $mongo;
-    private $storage;
-    public $options;
+    private const DABASE_NAME = 'sf-test';
+    private const COLLECTION_NAME = 'session-test';
 
-    protected function setUp()
+    public array $options;
+    private Manager $manager;
+    private MongoDbSessionHandler $storage;
+
+    protected function setUp(): void
     {
-        if (!extension_loaded('mongo')) {
-            $this->markTestSkipped('MongoDbSessionHandler requires the PHP "mongo" extension.');
+        parent::setUp();
+
+        $this->manager = new Manager('mongodb://'.getenv('MONGODB_HOST'));
+
+        try {
+            $this->manager->executeCommand(self::DABASE_NAME, new Command(['ping' => 1]));
+        } catch (ConnectionException $e) {
+            $this->markTestSkipped(sprintf('MongoDB Server "%s" not running: %s', getenv('MONGODB_HOST'), $e->getMessage()));
         }
 
-        $mongoClass = version_compare(phpversion('mongo'), '1.3.0', '<') ? 'Mongo' : 'MongoClient';
-
-        $this->mongo = $this->getMockBuilder($mongoClass)
-            ->getMock();
-
-        $this->options = array(
+        $this->options = [
             'id_field' => '_id',
             'data_field' => 'data',
             'time_field' => 'time',
-            'database' => 'sf2-test',
-            'collection' => 'session-test',
-        );
+            'expiry_field' => 'expires_at',
+            'database' => self::DABASE_NAME,
+            'collection' => self::COLLECTION_NAME,
+        ];
 
-        $this->storage = new MongoDbSessionHandler($this->mongo, $this->options);
+        $this->storage = new MongoDbSessionHandler($this->manager, $this->options);
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
-    public function testConstructorShouldThrowExceptionForInvalidMongo()
+    public function testCreateFromClient()
     {
-        new MongoDbSessionHandler(new \stdClass(), $this->options);
+        $client = $this->createMock(Client::class);
+        $client->expects($this->once())
+            ->method('getManager')
+            ->willReturn($this->manager);
+
+        $this->storage = new MongoDbSessionHandler($client, $this->options);
+        $this->storage->write('foo', 'bar');
+
+        $this->assertCount(1, $this->getSessions());
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
-    public function testConstructorShouldThrowExceptionForMissingOptions()
+    protected function tearDown(): void
     {
-        new MongoDbSessionHandler($this->mongo, array());
+        try {
+            $this->manager->executeCommand(self::DABASE_NAME, new Command(['drop' => self::COLLECTION_NAME]));
+        } catch (CommandException $e) {
+            // The server may return a NamespaceNotFound error if the collection does not exist
+            if (26 !== $e->getCode()) {
+                throw $e;
+            }
+        }
+    }
+
+    /** @dataProvider provideInvalidOptions */
+    public function testConstructorShouldThrowExceptionForMissingOptions(array $options)
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new MongoDbSessionHandler($this->manager, $options);
+    }
+
+    public function provideInvalidOptions()
+    {
+        yield 'empty' => [[]];
+        yield 'collection missing' => [['database' => 'foo']];
+        yield 'database missing' => [['collection' => 'foo']];
     }
 
     public function testOpenMethodAlwaysReturnTrue()
@@ -73,179 +115,95 @@ class MongoDbSessionHandlerTest extends \PHPUnit_Framework_TestCase
         $this->assertTrue($this->storage->close(), 'The "close" method should always return true');
     }
 
-    public function testWrite()
+    public function testRead()
     {
-        $collection = $this->createMongoCollectionMock();
-
-        $this->mongo->expects($this->once())
-            ->method('selectCollection')
-            ->with($this->options['database'], $this->options['collection'])
-            ->will($this->returnValue($collection));
-
-        $that = $this;
-        $data = array();
-
-        $collection->expects($this->once())
-            ->method('update')
-            ->will($this->returnCallback(function ($criteria, $updateData, $options) use ($that, &$data) {
-                $that->assertEquals(array($that->options['id_field'] => 'foo'), $criteria);
-                $that->assertEquals(array('upsert' => true, 'multiple' => false), $options);
-
-                $data = $updateData['$set'];
-            }));
-
-        $this->assertTrue($this->storage->write('foo', 'bar'));
-
-        $this->assertEquals('bar', $data[$this->options['data_field']]->bin);
-        $that->assertInstanceOf('MongoDate', $data[$this->options['time_field']]);
+        $this->insertSession('foo', 'bar', 0);
+        $this->assertEquals('bar', $this->storage->read('foo'));
     }
 
-    public function testWriteWhenUsingExpiresField()
+    public function testReadNotFound()
     {
-        $this->options = array(
-            'id_field' => '_id',
-            'data_field' => 'data',
-            'time_field' => 'time',
-            'database' => 'sf2-test',
-            'collection' => 'session-test',
-            'expiry_field' => 'expiresAt',
-        );
+        $this->insertSession('foo', 'bar', 0);
+        $this->assertEquals('', $this->storage->read('foobar'));
+    }
 
-        $this->storage = new MongoDbSessionHandler($this->mongo, $this->options);
+    public function testReadExpired()
+    {
+        $this->insertSession('foo', 'bar', -100_000);
+        $this->assertEquals('', $this->storage->read('foo'));
+    }
 
-        $collection = $this->createMongoCollectionMock();
-
-        $this->mongo->expects($this->once())
-            ->method('selectCollection')
-            ->with($this->options['database'], $this->options['collection'])
-            ->will($this->returnValue($collection));
-
-        $that = $this;
-        $data = array();
-
-        $collection->expects($this->once())
-            ->method('update')
-            ->will($this->returnCallback(function ($criteria, $updateData, $options) use ($that, &$data) {
-                $that->assertEquals(array($that->options['id_field'] => 'foo'), $criteria);
-                $that->assertEquals(array('upsert' => true, 'multiple' => false), $options);
-
-                $data = $updateData['$set'];
-            }));
-
+    public function testWrite()
+    {
+        $expectedTime = (new \DateTimeImmutable())->getTimestamp();
+        $expectedExpiry = $expectedTime + (int) \ini_get('session.gc_maxlifetime');
         $this->assertTrue($this->storage->write('foo', 'bar'));
 
-        $this->assertEquals('bar', $data[$this->options['data_field']]->bin);
-        $that->assertInstanceOf('MongoDate', $data[$this->options['time_field']]);
-        $that->assertInstanceOf('MongoDate', $data[$this->options['expiry_field']]);
+        $sessions = $this->getSessions();
+        $this->assertCount(1, $sessions);
+        $this->assertEquals('foo', $sessions[0]->_id);
+        $this->assertInstanceOf(Binary::class, $sessions[0]->data);
+        $this->assertEquals('bar', $sessions[0]->data->getData());
+        $this->assertInstanceOf(UTCDateTime::class, $sessions[0]->time);
+        $this->assertGreaterThanOrEqual($expectedTime, round((string) $sessions[0]->time / 1000));
+        $this->assertInstanceOf(UTCDateTime::class, $sessions[0]->expires_at);
+        $this->assertGreaterThanOrEqual($expectedExpiry, round((string) $sessions[0]->expires_at / 1000));
     }
 
     public function testReplaceSessionData()
     {
-        $collection = $this->createMongoCollectionMock();
-
-        $this->mongo->expects($this->once())
-            ->method('selectCollection')
-            ->with($this->options['database'], $this->options['collection'])
-            ->will($this->returnValue($collection));
-
-        $data = array();
-
-        $collection->expects($this->exactly(2))
-            ->method('update')
-            ->will($this->returnCallback(function ($criteria, $updateData, $options) use (&$data) {
-                $data = $updateData;
-            }));
-
         $this->storage->write('foo', 'bar');
+        $this->storage->write('baz', 'qux');
         $this->storage->write('foo', 'foobar');
 
-        $this->assertEquals('foobar', $data['$set'][$this->options['data_field']]->bin);
+        $sessions = $this->getSessions();
+        $this->assertCount(2, $sessions);
+        $this->assertEquals('foobar', $sessions[0]->data->getData());
     }
 
     public function testDestroy()
     {
-        $collection = $this->createMongoCollectionMock();
-
-        $this->mongo->expects($this->once())
-            ->method('selectCollection')
-            ->with($this->options['database'], $this->options['collection'])
-            ->will($this->returnValue($collection));
-
-        $collection->expects($this->once())
-            ->method('remove')
-            ->with(array($this->options['id_field'] => 'foo'));
+        $this->storage->write('foo', 'bar');
+        $this->storage->write('baz', 'qux');
 
         $this->assertTrue($this->storage->destroy('foo'));
+
+        $sessions = $this->getSessions();
+        $this->assertCount(1, $sessions);
+        $this->assertEquals('baz', $sessions[0]->_id);
     }
 
     public function testGc()
     {
-        $collection = $this->createMongoCollectionMock();
+        $this->insertSession('foo', 'bar', -100_000);
+        $this->insertSession('bar', 'bar', -100_000);
+        $this->insertSession('qux', 'bar', -300);
+        $this->insertSession('baz', 'bar', 0);
 
-        $this->mongo->expects($this->once())
-            ->method('selectCollection')
-            ->with($this->options['database'], $this->options['collection'])
-            ->will($this->returnValue($collection));
-
-        $that = $this;
-
-        $collection->expects($this->once())
-            ->method('remove')
-            ->will($this->returnCallback(function ($criteria) use ($that) {
-                $that->assertInstanceOf('MongoDate', $criteria[$that->options['time_field']]['$lt']);
-                $that->assertGreaterThanOrEqual(time() - 1, $criteria[$that->options['time_field']]['$lt']->sec);
-            }));
-
-        $this->assertTrue($this->storage->gc(1));
+        $this->assertSame(2, $this->storage->gc(1));
+        $this->assertCount(2, $this->getSessions());
     }
 
-    public function testGcWhenUsingExpiresField()
+    /**
+     * @return list<object{_id:string,data:Binary,time:UTCDateTime,expires_at:UTCDateTime>
+     */
+    private function getSessions(): array
     {
-        $this->options = array(
-            'id_field' => '_id',
-            'data_field' => 'data',
-            'time_field' => 'time',
-            'database' => 'sf2-test',
-            'collection' => 'session-test',
-            'expiry_field' => 'expiresAt',
-        );
-
-        $this->storage = new MongoDbSessionHandler($this->mongo, $this->options);
-
-        $collection = $this->createMongoCollectionMock();
-
-        $this->mongo->expects($this->never())
-            ->method('selectCollection');
-
-        $that = $this;
-
-        $collection->expects($this->never())
-            ->method('remove');
-
-        $this->assertTrue($this->storage->gc(1));
+        return $this->manager->executeQuery(self::DABASE_NAME.'.'.self::COLLECTION_NAME, new Query([]))->toArray();
     }
 
-    public function testGetConnection()
+    private function insertSession(string $sessionId, string $data, int $timeDiff): void
     {
-        $method = new \ReflectionMethod($this->storage, 'getMongo');
-        $method->setAccessible(true);
+        $time = time() + $timeDiff;
 
-        $mongoClass = (version_compare(phpversion('mongo'), '1.3.0', '<')) ? '\Mongo' : '\MongoClient';
+        $write = new BulkWrite();
+        $write->insert([
+            '_id' => $sessionId,
+            'data' => new Binary($data, Binary::TYPE_GENERIC),
+            'time' => new UTCDateTime($time * 1000),
+            'expires_at' => new UTCDateTime(($time + (int) \ini_get('session.gc_maxlifetime')) * 1000),
+        ]);
 
-        $this->assertInstanceOf($mongoClass, $method->invoke($this->storage));
-    }
-
-    private function createMongoCollectionMock()
-    {
-        $mongoClient = $this->getMockBuilder('MongoClient')
-            ->getMock();
-        $mongoDb = $this->getMockBuilder('MongoDB')
-            ->setConstructorArgs(array($mongoClient, 'database-name'))
-            ->getMock();
-        $collection = $this->getMockBuilder('MongoCollection')
-            ->setConstructorArgs(array($mongoDb, 'collection-name'))
-            ->getMock();
-
-        return $collection;
+        $this->manager->executeBulkWrite(self::DABASE_NAME.'.'.self::COLLECTION_NAME, $write);
     }
 }

@@ -14,7 +14,7 @@ namespace Symfony\Component\Translation\Extractor;
 use Symfony\Component\Translation\MessageCatalogue;
 
 /**
- * Extracts translation messages from a template directory to the catalogue.
+ * Extracts translation messages from a directory or files to the catalogue.
  * New found messages are injected to the catalogue using the prefix.
  *
  * @author Michel Salib <michelsalib@hotmail.com>
@@ -22,17 +22,18 @@ use Symfony\Component\Translation\MessageCatalogue;
 interface ExtractorInterface
 {
     /**
-     * Extracts translation messages from a template directory to the catalogue.
+     * Extracts translation messages from files, a file or a directory to the catalogue.
      *
-     * @param string           $directory The path to look into
-     * @param MessageCatalogue $catalogue The catalogue
+     * @param string|iterable<string> $resource Files, a file or a directory
+     *
+     * @return void
      */
-    public function extract($directory, MessageCatalogue $catalogue);
+    public function extract(string|iterable $resource, MessageCatalogue $catalogue);
 
     /**
      * Sets the prefix that should be used for new found messages.
      *
-     * @param string $prefix The prefix
+     * @return void
      */
-    public function setPrefix($prefix);
+    public function setPrefix(string $prefix);
 }

@@ -11,24 +11,20 @@
 
 namespace Symfony\Component\Config\Tests\Loader;
 
-use Symfony\Component\Config\Loader\LoaderResolver;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Config\Exception\LoaderLoadException;
 use Symfony\Component\Config\Loader\DelegatingLoader;
+use Symfony\Component\Config\Loader\LoaderInterface;
+use Symfony\Component\Config\Loader\LoaderResolver;
 
-class DelegatingLoaderTest extends \PHPUnit_Framework_TestCase
+class DelegatingLoaderTest extends TestCase
 {
-    /**
-     * @covers Symfony\Component\Config\Loader\DelegatingLoader::__construct
-     */
     public function testConstructor()
     {
-        $loader = new DelegatingLoader($resolver = new LoaderResolver());
+        new DelegatingLoader($resolver = new LoaderResolver());
         $this->assertTrue(true, '__construct() takes a loader resolver as its first argument');
     }
 
-    /**
-     * @covers Symfony\Component\Config\Loader\DelegatingLoader::getResolver
-     * @covers Symfony\Component\Config\Loader\DelegatingLoader::setResolver
-     */
     public function testGetSetResolver()
     {
         $resolver = new LoaderResolver();
@@ -38,45 +34,38 @@ class DelegatingLoaderTest extends \PHPUnit_Framework_TestCase
         $this->assertSame($resolver, $loader->getResolver(), '->setResolver() sets the resolver loader');
     }
 
-    /**
-     * @covers Symfony\Component\Config\Loader\DelegatingLoader::supports
-     */
     public function testSupports()
     {
-        $loader1 = $this->getMock('Symfony\Component\Config\Loader\LoaderInterface');
-        $loader1->expects($this->once())->method('supports')->will($this->returnValue(true));
-        $loader = new DelegatingLoader(new LoaderResolver(array($loader1)));
+        $loader1 = $this->createMock(LoaderInterface::class);
+        $loader1->expects($this->once())->method('supports')->willReturn(true);
+        $loader = new DelegatingLoader(new LoaderResolver([$loader1]));
         $this->assertTrue($loader->supports('foo.xml'), '->supports() returns true if the resource is loadable');
 
-        $loader1 = $this->getMock('Symfony\Component\Config\Loader\LoaderInterface');
-        $loader1->expects($this->once())->method('supports')->will($this->returnValue(false));
-        $loader = new DelegatingLoader(new LoaderResolver(array($loader1)));
+        $loader1 = $this->createMock(LoaderInterface::class);
+        $loader1->expects($this->once())->method('supports')->willReturn(false);
+        $loader = new DelegatingLoader(new LoaderResolver([$loader1]));
         $this->assertFalse($loader->supports('foo.foo'), '->supports() returns false if the resource is not loadable');
     }
 
-    /**
-     * @covers Symfony\Component\Config\Loader\DelegatingLoader::load
-     */
     public function testLoad()
     {
-        $loader = $this->getMock('Symfony\Component\Config\Loader\LoaderInterface');
-        $loader->expects($this->once())->method('supports')->will($this->returnValue(true));
+        $loader = $this->createMock(LoaderInterface::class);
+        $loader->expects($this->once())->method('supports')->willReturn(true);
         $loader->expects($this->once())->method('load');
-        $resolver = new LoaderResolver(array($loader));
+        $resolver = new LoaderResolver([$loader]);
         $loader = new DelegatingLoader($resolver);
 
         $loader->load('foo');
     }
 
-    /**
-     * @expectedException \Symfony\Component\Config\Exception\FileLoaderLoadException
-     */
     public function testLoadThrowsAnExceptionIfTheResourceCannotBeLoaded()
     {
-        $loader = $this->getMock('Symfony\Component\Config\Loader\LoaderInterface');
-        $loader->expects($this->once())->method('supports')->will($this->returnValue(false));
-        $resolver = new LoaderResolver(array($loader));
+        $loader = $this->createMock(LoaderInterface::class);
+        $loader->expects($this->once())->method('supports')->willReturn(false);
+        $resolver = new LoaderResolver([$loader]);
         $loader = new DelegatingLoader($resolver);
+
+        $this->expectException(LoaderLoadException::class);
 
         $loader->load('foo');
     }

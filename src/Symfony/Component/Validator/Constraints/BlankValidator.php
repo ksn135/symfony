@@ -17,23 +17,19 @@ use Symfony\Component\Validator\Exception\UnexpectedTypeException;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>
- *
- * @api
  */
 class BlankValidator extends ConstraintValidator
 {
-    /**
-     * {@inheritdoc}
-     */
-    public function validate($value, Constraint $constraint)
+    public function validate(mixed $value, Constraint $constraint): void
     {
         if (!$constraint instanceof Blank) {
-            throw new UnexpectedTypeException($constraint, __NAMESPACE__.'\Blank');
+            throw new UnexpectedTypeException($constraint, Blank::class);
         }
 
         if ('' !== $value && null !== $value) {
-            $this->buildViolation($constraint->message)
+            $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ value }}', $this->formatValue($value))
+                ->setCode(Blank::NOT_BLANK_ERROR)
                 ->addViolation();
         }
     }

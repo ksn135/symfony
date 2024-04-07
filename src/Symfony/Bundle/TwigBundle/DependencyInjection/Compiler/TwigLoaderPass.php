@@ -11,38 +11,49 @@
 
 namespace Symfony\Bundle\TwigBundle\DependencyInjection\Compiler;
 
-use Symfony\Component\DependencyInjection\Reference;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\LogicException;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
- * Adds services tagged twig.loader as Twig loaders
+ * Adds services tagged twig.loader as Twig loaders.
  *
  * @author Daniel Leech <daniel@dantleech.com>
  */
 class TwigLoaderPass implements CompilerPassInterface
 {
-    public function process(ContainerBuilder $container)
+    public function process(ContainerBuilder $container): void
     {
         if (false === $container->hasDefinition('twig')) {
             return;
         }
 
-        // register additional template loaders
-        $loaderIds = $container->findTaggedServiceIds('twig.loader');
+        $prioritizedLoaders = [];
+        $found = 0;
 
-        if (count($loaderIds) === 0) {
-            throw new LogicException('No twig loaders found. You need to tag at least one loader with "twig.loader"');
+        foreach ($container->findTaggedServiceIds('twig.loader', true) as $id => $attributes) {
+            $priority = $attributes[0]['priority'] ?? 0;
+            $prioritizedLoaders[$priority][] = $id;
+            ++$found;
         }
 
-        if (count($loaderIds) === 1) {
-            $container->setAlias('twig.loader', key($loaderIds));
+        if (!$found) {
+            throw new LogicException('No twig loaders found. You need to tag at least one loader with "twig.loader".');
+        }
+
+        if (1 === $found) {
+            $container->setAlias('twig.loader', $id);
         } else {
             $chainLoader = $container->getDefinition('twig.loader.chain');
-            foreach (array_keys($loaderIds) as $id) {
-                $chainLoader->addMethodCall('addLoader', array(new Reference($id)));
+            krsort($prioritizedLoaders);
+
+            foreach ($prioritizedLoaders as $loaders) {
+                foreach ($loaders as $loader) {
+                    $chainLoader->addMethodCall('addLoader', [new Reference($loader)]);
+                }
             }
+
             $container->setAlias('twig.loader', 'twig.loader.chain');
         }
     }

@@ -11,9 +11,14 @@
 
 namespace Symfony\Component\Security\Http\Tests\Session;
 
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Csrf\TokenStorage\ClearableTokenStorageInterface;
 use Symfony\Component\Security\Http\Session\SessionAuthenticationStrategy;
 
-class SessionAuthenticationStrategyTest extends \PHPUnit_Framework_TestCase
+class SessionAuthenticationStrategyTest extends TestCase
 {
     public function testSessionIsNotChanged()
     {
@@ -21,53 +26,60 @@ class SessionAuthenticationStrategyTest extends \PHPUnit_Framework_TestCase
         $request->expects($this->never())->method('getSession');
 
         $strategy = new SessionAuthenticationStrategy(SessionAuthenticationStrategy::NONE);
-        $strategy->onAuthentication($request, $this->getToken());
+        $strategy->onAuthentication($request, $this->createMock(TokenInterface::class));
     }
 
-    /**
-     * @expectedException \RuntimeException
-     * @expectedExceptionMessage Invalid session authentication strategy "foo"
-     */
     public function testUnsupportedStrategy()
     {
         $request = $this->getRequest();
         $request->expects($this->never())->method('getSession');
 
         $strategy = new SessionAuthenticationStrategy('foo');
-        $strategy->onAuthentication($request, $this->getToken());
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Invalid session authentication strategy "foo"');
+
+        $strategy->onAuthentication($request, $this->createMock(TokenInterface::class));
     }
 
     public function testSessionIsMigrated()
     {
-        $session = $this->getMock('Symfony\Component\HttpFoundation\Session\SessionInterface');
-        $session->expects($this->once())->method('migrate');
+        $session = $this->createMock(SessionInterface::class);
+        $session->expects($this->once())->method('migrate')->with($this->equalTo(true));
 
         $strategy = new SessionAuthenticationStrategy(SessionAuthenticationStrategy::MIGRATE);
-        $strategy->onAuthentication($this->getRequest($session), $this->getToken());
+        $strategy->onAuthentication($this->getRequest($session), $this->createMock(TokenInterface::class));
     }
 
     public function testSessionIsInvalidated()
     {
-        $session = $this->getMock('Symfony\Component\HttpFoundation\Session\SessionInterface');
+        $session = $this->createMock(SessionInterface::class);
         $session->expects($this->once())->method('invalidate');
 
         $strategy = new SessionAuthenticationStrategy(SessionAuthenticationStrategy::INVALIDATE);
-        $strategy->onAuthentication($this->getRequest($session), $this->getToken());
+        $strategy->onAuthentication($this->getRequest($session), $this->createMock(TokenInterface::class));
+    }
+
+    public function testCsrfTokensAreCleared()
+    {
+        $session = $this->createMock(SessionInterface::class);
+        $session->expects($this->once())->method('migrate')->with($this->equalTo(true));
+
+        $csrfStorage = $this->createMock(ClearableTokenStorageInterface::class);
+        $csrfStorage->expects($this->once())->method('clear');
+
+        $strategy = new SessionAuthenticationStrategy(SessionAuthenticationStrategy::MIGRATE, $csrfStorage);
+        $strategy->onAuthentication($this->getRequest($session), $this->createMock(TokenInterface::class));
     }
 
     private function getRequest($session = null)
     {
-        $request = $this->getMock('Symfony\Component\HttpFoundation\Request');
+        $request = $this->createMock(Request::class);
 
         if (null !== $session) {
-            $request->expects($this->any())->method('getSession')->will($this->returnValue($session));
+            $request->expects($this->any())->method('getSession')->willReturn($session);
         }
 
         return $request;
-    }
-
-    private function getToken()
-    {
-        return $this->getMock('Symfony\Component\Security\Core\Authentication\Token\TokenInterface');
     }
 }

@@ -11,8 +11,10 @@
 
 namespace Symfony\Bundle\DebugBundle;
 
+use Symfony\Bundle\DebugBundle\DependencyInjection\Compiler\DumpDataCollectorPass;
+use Symfony\Component\Console\Application;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
-use Symfony\Component\VarDumper\Dumper\CliDumper;
 use Symfony\Component\VarDumper\VarDumper;
 
 /**
@@ -20,23 +22,42 @@ use Symfony\Component\VarDumper\VarDumper;
  */
 class DebugBundle extends Bundle
 {
-    public function boot()
+    public function boot(): void
     {
         if ($this->container->getParameter('kernel.debug')) {
             $container = $this->container;
 
             // This code is here to lazy load the dump stack. This default
-            // configuration for CLI mode is overridden in HTTP mode on
-            // 'kernel.request' event
-            VarDumper::setHandler(function ($var) use ($container) {
-                $dumper = new CliDumper();
+            // configuration is overridden in CLI mode on 'console.command' event.
+            // The dump data collector is used by default, so dump output is sent to
+            // the WDT. In a CLI context, if dump is used too soon, the data collector
+            // will buffer it, and release it at the end of the script.
+            VarDumper::setHandler(function ($var, ?string $label = null) use ($container) {
+                $dumper = $container->get('data_collector.dump');
                 $cloner = $container->get('var_dumper.cloner');
-                $handler = function ($var) use ($dumper, $cloner) {
-                    $dumper->dump($cloner->cloneVar($var));
+                $handler = function ($var, ?string $label = null) use ($dumper, $cloner) {
+                    $var = $cloner->cloneVar($var);
+                    if (null !== $label) {
+                        $var = $var->withContext(['label' => $label]);
+                    }
+
+                    $dumper->dump($var);
                 };
                 VarDumper::setHandler($handler);
-                $handler($var);
+                $handler($var, $label);
             });
         }
+    }
+
+    public function build(ContainerBuilder $container): void
+    {
+        parent::build($container);
+
+        $container->addCompilerPass(new DumpDataCollectorPass());
+    }
+
+    public function registerCommands(Application $application): void
+    {
+        // noop
     }
 }

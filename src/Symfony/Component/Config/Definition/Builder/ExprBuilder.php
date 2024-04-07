@@ -21,30 +21,29 @@ use Symfony\Component\Config\Definition\Exception\UnsetKeyException;
  */
 class ExprBuilder
 {
-    protected $node;
-    public $ifPart;
-    public $thenPart;
+    public const TYPE_ANY = 'any';
+    public const TYPE_STRING = 'string';
+    public const TYPE_NULL = 'null';
+    public const TYPE_ARRAY = 'array';
 
-    /**
-     * Constructor
-     *
-     * @param NodeDefinition $node The related node
-     */
-    public function __construct(NodeDefinition $node)
-    {
-        $this->node = $node;
+    public string $allowedTypes;
+    public ?\Closure $ifPart = null;
+    public ?\Closure $thenPart = null;
+
+    public function __construct(
+        protected NodeDefinition $node,
+    ) {
     }
 
     /**
      * Marks the expression as being always used.
      *
-     * @param \Closure $then
-     *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function always(\Closure $then = null)
+    public function always(?\Closure $then = null): static
     {
-        $this->ifPart = function ($v) { return true; };
+        $this->ifPart = static fn () => true;
+        $this->allowedTypes = self::TYPE_ANY;
 
         if (null !== $then) {
             $this->thenPart = $then;
@@ -58,17 +57,12 @@ class ExprBuilder
      *
      * The default one tests if the value is true.
      *
-     * @param \Closure $closure
-     *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function ifTrue(\Closure $closure = null)
+    public function ifTrue(?\Closure $closure = null): static
     {
-        if (null === $closure) {
-            $closure = function ($v) { return true === $v; };
-        }
-
-        $this->ifPart = $closure;
+        $this->ifPart = $closure ?? static fn ($v) => true === $v;
+        $this->allowedTypes = self::TYPE_ANY;
 
         return $this;
     }
@@ -76,11 +70,12 @@ class ExprBuilder
     /**
      * Tests if the value is a string.
      *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function ifString()
+    public function ifString(): static
     {
-        $this->ifPart = function ($v) { return is_string($v); };
+        $this->ifPart = \is_string(...);
+        $this->allowedTypes = self::TYPE_STRING;
 
         return $this;
     }
@@ -88,11 +83,25 @@ class ExprBuilder
     /**
      * Tests if the value is null.
      *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function ifNull()
+    public function ifNull(): static
     {
-        $this->ifPart = function ($v) { return null === $v; };
+        $this->ifPart = \is_null(...);
+        $this->allowedTypes = self::TYPE_NULL;
+
+        return $this;
+    }
+
+    /**
+     * Tests if the value is empty.
+     *
+     * @return $this
+     */
+    public function ifEmpty(): static
+    {
+        $this->ifPart = static fn ($v) => !$v;
+        $this->allowedTypes = self::TYPE_ANY;
 
         return $this;
     }
@@ -100,11 +109,12 @@ class ExprBuilder
     /**
      * Tests if the value is an array.
      *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function ifArray()
+    public function ifArray(): static
     {
-        $this->ifPart = function ($v) { return is_array($v); };
+        $this->ifPart = \is_array(...);
+        $this->allowedTypes = self::TYPE_ARRAY;
 
         return $this;
     }
@@ -112,13 +122,12 @@ class ExprBuilder
     /**
      * Tests if the value is in an array.
      *
-     * @param array $array
-     *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function ifInArray(array $array)
+    public function ifInArray(array $array): static
     {
-        $this->ifPart = function ($v) use ($array) { return in_array($v, $array, true); };
+        $this->ifPart = static fn ($v) => \in_array($v, $array, true);
+        $this->allowedTypes = self::TYPE_ANY;
 
         return $this;
     }
@@ -126,13 +135,26 @@ class ExprBuilder
     /**
      * Tests if the value is not in an array.
      *
-     * @param array $array
-     *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function ifNotInArray(array $array)
+    public function ifNotInArray(array $array): static
     {
-        $this->ifPart = function ($v) use ($array) { return !in_array($v, $array, true); };
+        $this->ifPart = static fn ($v) => !\in_array($v, $array, true);
+        $this->allowedTypes = self::TYPE_ANY;
+
+        return $this;
+    }
+
+    /**
+     * Transforms variables of any type into an array.
+     *
+     * @return $this
+     */
+    public function castToArray(): static
+    {
+        $this->ifPart = static fn ($v) => !\is_array($v);
+        $this->allowedTypes = self::TYPE_ANY;
+        $this->thenPart = static fn ($v) => [$v];
 
         return $this;
     }
@@ -140,11 +162,9 @@ class ExprBuilder
     /**
      * Sets the closure to run if the test pass.
      *
-     * @param \Closure $closure
-     *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function then(\Closure $closure)
+    public function then(\Closure $closure): static
     {
         $this->thenPart = $closure;
 
@@ -154,55 +174,51 @@ class ExprBuilder
     /**
      * Sets a closure returning an empty array.
      *
-     * @return ExprBuilder
+     * @return $this
      */
-    public function thenEmptyArray()
+    public function thenEmptyArray(): static
     {
-        $this->thenPart = function ($v) { return array(); };
+        $this->thenPart = static fn () => [];
 
         return $this;
     }
 
     /**
-     * Sets a closure marking the value as invalid at validation time.
+     * Sets a closure marking the value as invalid at processing time.
      *
      * if you want to add the value of the node in your message just use a %s placeholder.
      *
-     * @param string $message
-     *
-     * @return ExprBuilder
+     * @return $this
      *
      * @throws \InvalidArgumentException
      */
-    public function thenInvalid($message)
+    public function thenInvalid(string $message): static
     {
-        $this->thenPart = function ($v) use ($message) {throw new \InvalidArgumentException(sprintf($message, json_encode($v))); };
+        $this->thenPart = static fn ($v) => throw new \InvalidArgumentException(sprintf($message, json_encode($v)));
 
         return $this;
     }
 
     /**
-     * Sets a closure unsetting this key of the array at validation time.
+     * Sets a closure unsetting this key of the array at processing time.
      *
-     * @return ExprBuilder
+     * @return $this
      *
      * @throws UnsetKeyException
      */
-    public function thenUnset()
+    public function thenUnset(): static
     {
-        $this->thenPart = function ($v) { throw new UnsetKeyException('Unsetting key'); };
+        $this->thenPart = static fn () => throw new UnsetKeyException('Unsetting key.');
 
         return $this;
     }
 
     /**
-     * Returns the related node
-     *
-     * @return NodeDefinition
+     * Returns the related node.
      *
      * @throws \RuntimeException
      */
-    public function end()
+    public function end(): NodeDefinition|ArrayNodeDefinition|VariableNodeDefinition
     {
         if (null === $this->ifPart) {
             throw new \RuntimeException('You must specify an if part.');
@@ -218,16 +234,14 @@ class ExprBuilder
      * Builds the expressions.
      *
      * @param ExprBuilder[] $expressions An array of ExprBuilder instances to build
-     *
-     * @return array
      */
-    public static function buildExpressions(array $expressions)
+    public static function buildExpressions(array $expressions): array
     {
         foreach ($expressions as $k => $expr) {
-            if ($expr instanceof ExprBuilder) {
-                $expressions[$k] = function ($v) use ($expr) {
-                    return call_user_func($expr->ifPart, $v) ? call_user_func($expr->thenPart, $v) : $v;
-                };
+            if ($expr instanceof self) {
+                $if = $expr->ifPart;
+                $then = $expr->thenPart;
+                $expressions[$k] = static fn ($v) => $if($v) ? $then($v) : $v;
             }
         }
 

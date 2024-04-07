@@ -11,175 +11,119 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Test;
 
-use Symfony\Component\Finder\Finder;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\Container;
+use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\HttpKernel\KernelInterface;
+use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * KernelTestCase is the base class for tests needing a Kernel.
  *
  * @author Fabien Potencier <fabien@symfony.com>
  */
-abstract class KernelTestCase extends \PHPUnit_Framework_TestCase
+abstract class KernelTestCase extends TestCase
 {
-    protected static $class;
+    use MailerAssertionsTrait;
+    use NotificationAssertionsTrait;
 
-    /**
-     * @var KernelInterface
-     */
-    protected static $kernel;
+    protected static ?string $class = null;
+    protected static ?KernelInterface $kernel = null;
+    protected static bool $booted = false;
 
-    /**
-     * Finds the directory where the phpunit.xml(.dist) is stored.
-     *
-     * If you run tests with the PHPUnit CLI tool, everything will work as expected.
-     * If not, override this method in your test classes.
-     *
-     * @return string The directory where phpunit.xml(.dist) is stored
-     *
-     * @throws \RuntimeException
-     */
-    protected static function getPhpUnitXmlDir()
+    protected function tearDown(): void
     {
-        if (!isset($_SERVER['argv']) || false === strpos($_SERVER['argv'][0], 'phpunit')) {
-            throw new \RuntimeException('You must override the KernelTestCase::createKernel() method.');
-        }
-
-        $dir = static::getPhpUnitCliConfigArgument();
-        if (null === $dir &&
-            (is_file(getcwd().DIRECTORY_SEPARATOR.'phpunit.xml') ||
-            is_file(getcwd().DIRECTORY_SEPARATOR.'phpunit.xml.dist'))) {
-            $dir = getcwd();
-        }
-
-        // Can't continue
-        if (null === $dir) {
-            throw new \RuntimeException('Unable to guess the Kernel directory.');
-        }
-
-        if (!is_dir($dir)) {
-            $dir = dirname($dir);
-        }
-
-        return $dir;
+        static::ensureKernelShutdown();
+        static::$class = null;
+        static::$kernel = null;
+        static::$booted = false;
     }
 
     /**
-     * Finds the value of the CLI configuration option.
-     *
-     * PHPUnit will use the last configuration argument on the command line, so this only returns
-     * the last configuration argument.
-     *
-     * @return string The value of the PHPUnit CLI configuration option
-     */
-    private static function getPhpUnitCliConfigArgument()
-    {
-        $dir = null;
-        $reversedArgs = array_reverse($_SERVER['argv']);
-        foreach ($reversedArgs as $argIndex => $testArg) {
-            if (preg_match('/^-[^ \-]*c$/', $testArg) || $testArg === '--configuration') {
-                $dir = realpath($reversedArgs[$argIndex - 1]);
-                break;
-            } elseif (strpos($testArg, '--configuration=') === 0) {
-                $argPath = substr($testArg, strlen('--configuration='));
-                $dir = realpath($argPath);
-                break;
-            }
-        }
-
-        return $dir;
-    }
-
-    /**
-     * Attempts to guess the kernel location.
-     *
-     * When the Kernel is located, the file is required.
-     *
-     * @return string The Kernel class name
-     *
      * @throws \RuntimeException
+     * @throws \LogicException
      */
-    protected static function getKernelClass()
+    protected static function getKernelClass(): string
     {
-        if (isset($_SERVER['KERNEL_DIR'])) {
-            $dir = $_SERVER['KERNEL_DIR'];
-
-            if (!is_dir($dir)) {
-                $phpUnitDir = static::getPhpUnitXmlDir();
-                if (is_dir("$phpUnitDir/$dir")) {
-                    $dir = "$phpUnitDir/$dir";
-                }
-            }
-        } else {
-            $dir = static::getPhpUnitXmlDir();
+        if (!isset($_SERVER['KERNEL_CLASS']) && !isset($_ENV['KERNEL_CLASS'])) {
+            throw new \LogicException(sprintf('You must set the KERNEL_CLASS environment variable to the fully-qualified class name of your Kernel in phpunit.xml / phpunit.xml.dist or override the "%1$s::createKernel()" or "%1$s::getKernelClass()" method.', static::class));
         }
 
-        $finder = new Finder();
-        $finder->name('*Kernel.php')->depth(0)->in($dir);
-        $results = iterator_to_array($finder);
-        if (!count($results)) {
-            throw new \RuntimeException('Either set KERNEL_DIR in your phpunit.xml according to http://symfony.com/doc/current/book/testing.html#your-first-functional-test or override the WebTestCase::createKernel() method.');
+        if (!class_exists($class = $_ENV['KERNEL_CLASS'] ?? $_SERVER['KERNEL_CLASS'])) {
+            throw new \RuntimeException(sprintf('Class "%s" doesn\'t exist or cannot be autoloaded. Check that the KERNEL_CLASS value in phpunit.xml matches the fully-qualified class name of your Kernel or override the "%s::createKernel()" method.', $class, static::class));
         }
-
-        $file = current($results);
-        $class = $file->getBasename('.php');
-
-        require_once $file;
 
         return $class;
     }
 
     /**
      * Boots the Kernel for this test.
-     *
-     * @param array $options
      */
-    protected static function bootKernel(array $options = array())
+    protected static function bootKernel(array $options = []): KernelInterface
     {
         static::ensureKernelShutdown();
 
-        static::$kernel = static::createKernel($options);
-        static::$kernel->boot();
+        $kernel = static::createKernel($options);
+        $kernel->boot();
+        static::$kernel = $kernel;
+        static::$booted = true;
+
+        return static::$kernel;
     }
 
-   /**
+    /**
+     * Provides a dedicated test container with access to both public and private
+     * services. The container will not include private services that have been
+     * inlined or removed. Private services will be removed when they are not
+     * used by other services.
+     *
+     * Using this method is the best way to get a container from your test code.
+     */
+    protected static function getContainer(): Container
+    {
+        if (!static::$booted) {
+            static::bootKernel();
+        }
+
+        try {
+            return self::$kernel->getContainer()->get('test.service_container');
+        } catch (ServiceNotFoundException $e) {
+            throw new \LogicException('Could not find service "test.service_container". Try updating the "framework.test" config to "true".', 0, $e);
+        }
+    }
+
+    /**
      * Creates a Kernel.
      *
      * Available options:
      *
      *  * environment
      *  * debug
-     *
-     * @param array $options An array of options
-     *
-     * @return KernelInterface A KernelInterface instance
      */
-    protected static function createKernel(array $options = array())
+    protected static function createKernel(array $options = []): KernelInterface
     {
-        if (null === static::$class) {
-            static::$class = static::getKernelClass();
-        }
+        static::$class ??= static::getKernelClass();
 
-        return new static::$class(
-            isset($options['environment']) ? $options['environment'] : 'test',
-            isset($options['debug']) ? $options['debug'] : true
-        );
+        $env = $options['environment'] ?? $_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? 'test';
+        $debug = $options['debug'] ?? $_ENV['APP_DEBUG'] ?? $_SERVER['APP_DEBUG'] ?? true;
+
+        return new static::$class($env, $debug);
     }
 
     /**
-     * Shuts the kernel down if it was used in the test.
+     * Shuts the kernel down if it was used in the test - called by the tearDown method by default.
      */
     protected static function ensureKernelShutdown()
     {
         if (null !== static::$kernel) {
+            static::$kernel->boot();
+            $container = static::$kernel->getContainer();
             static::$kernel->shutdown();
-        }
-    }
+            static::$booted = false;
 
-    /**
-     * Clean up Kernel usage in this test.
-     */
-    protected function tearDown()
-    {
-        static::ensureKernelShutdown();
+            if ($container instanceof ResetInterface) {
+                $container->reset();
+            }
+        }
     }
 }

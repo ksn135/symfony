@@ -11,37 +11,39 @@
 
 namespace Symfony\Component\ExpressionLanguage;
 
+use Symfony\Contracts\Service\ResetInterface;
+
 /**
  * Compiles a node to PHP code.
  *
  * @author Fabien Potencier <fabien@symfony.com>
  */
-class Compiler
+class Compiler implements ResetInterface
 {
-    private $source;
-    private $functions;
+    private string $source = '';
 
-    public function __construct(array $functions)
-    {
-        $this->functions = $functions;
+    public function __construct(
+        private array $functions,
+    ) {
     }
 
-    public function getFunction($name)
+    public function getFunction(string $name): array
     {
         return $this->functions[$name];
     }
 
     /**
      * Gets the current PHP code after compilation.
-     *
-     * @return string The PHP code
      */
-    public function getSource()
+    public function getSource(): string
     {
         return $this->source;
     }
 
-    public function reset()
+    /**
+     * @return $this
+     */
+    public function reset(): static
     {
         $this->source = '';
 
@@ -51,18 +53,16 @@ class Compiler
     /**
      * Compiles a node.
      *
-     * @param Node\Node $node The node to compile
-     *
-     * @return Compiler The current compiler instance
+     * @return $this
      */
-    public function compile(Node\Node $node)
+    public function compile(Node\Node $node): static
     {
         $node->compile($this);
 
         return $this;
     }
 
-    public function subcompile(Node\Node $node)
+    public function subcompile(Node\Node $node): string
     {
         $current = $this->source;
         $this->source = '';
@@ -78,11 +78,9 @@ class Compiler
     /**
      * Adds a raw string to the compiled code.
      *
-     * @param string $string The string
-     *
-     * @return Compiler The current compiler instance
+     * @return $this
      */
-    public function raw($string)
+    public function raw(string $string): static
     {
         $this->source .= $string;
 
@@ -92,11 +90,9 @@ class Compiler
     /**
      * Adds a quoted string to the compiled code.
      *
-     * @param string $value The string
-     *
-     * @return Compiler The current compiler instance
+     * @return $this
      */
-    public function string($value)
+    public function string(string $value): static
     {
         $this->source .= sprintf('"%s"', addcslashes($value, "\0\t\"\$\\"));
 
@@ -106,28 +102,26 @@ class Compiler
     /**
      * Returns a PHP representation of a given value.
      *
-     * @param mixed $value The value to convert
-     *
-     * @return Compiler The current compiler instance
+     * @return $this
      */
-    public function repr($value)
+    public function repr(mixed $value): static
     {
-        if (is_int($value) || is_float($value)) {
-            if (false !== $locale = setlocale(LC_NUMERIC, 0)) {
-                setlocale(LC_NUMERIC, 'C');
+        if (\is_int($value) || \is_float($value)) {
+            if (false !== $locale = setlocale(\LC_NUMERIC, 0)) {
+                setlocale(\LC_NUMERIC, 'C');
             }
 
             $this->raw($value);
 
             if (false !== $locale) {
-                setlocale(LC_NUMERIC, $locale);
+                setlocale(\LC_NUMERIC, $locale);
             }
         } elseif (null === $value) {
             $this->raw('null');
-        } elseif (is_bool($value)) {
+        } elseif (\is_bool($value)) {
             $this->raw($value ? 'true' : 'false');
-        } elseif (is_array($value)) {
-            $this->raw('array(');
+        } elseif (\is_array($value)) {
+            $this->raw('[');
             $first = true;
             foreach ($value as $key => $value) {
                 if (!$first) {
@@ -138,7 +132,7 @@ class Compiler
                 $this->raw(' => ');
                 $this->repr($value);
             }
-            $this->raw(')');
+            $this->raw(']');
         } else {
             $this->string($value);
         }

@@ -11,11 +11,11 @@
 
 namespace Symfony\Component\Intl\Data\Bundle\Reader;
 
+use Symfony\Component\Intl\Data\Util\RecursiveArrayAccess;
 use Symfony\Component\Intl\Exception\MissingResourceException;
 use Symfony\Component\Intl\Exception\OutOfBoundsException;
 use Symfony\Component\Intl\Exception\ResourceBundleNotFoundException;
 use Symfony\Component\Intl\Locale;
-use Symfony\Component\Intl\Data\Util\RecursiveArrayAccess;
 
 /**
  * Default implementation of {@link BundleEntryReaderInterface}.
@@ -28,22 +28,15 @@ use Symfony\Component\Intl\Data\Util\RecursiveArrayAccess;
  */
 class BundleEntryReader implements BundleEntryReaderInterface
 {
-    /**
-     * @var BundleReaderInterface
-     */
-    private $reader;
+    private BundleReaderInterface $reader;
 
     /**
-     * A mapping of locale aliases to locales
-     *
-     * @var array
+     * A mapping of locale aliases to locales.
      */
-    private $localeAliases = array();
+    private array $localeAliases = [];
 
     /**
      * Creates an entry reader based on the given resource bundle reader.
-     *
-     * @param BundleReaderInterface $reader A resource bundle reader to use.
      */
     public function __construct(BundleReaderInterface $reader)
     {
@@ -60,30 +53,24 @@ class BundleEntryReader implements BundleEntryReaderInterface
      *
      * @param array $localeAliases A mapping of locale aliases to locales
      */
-    public function setLocaleAliases($localeAliases)
+    public function setLocaleAliases(array $localeAliases): void
     {
         $this->localeAliases = $localeAliases;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function read($path, $locale)
+    public function read(string $path, string $locale): mixed
     {
         return $this->reader->read($path, $locale);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function readEntry($path, $locale, array $indices, $fallback = true)
+    public function readEntry(string $path, string $locale, array $indices, bool $fallback = true): mixed
     {
         $entry = null;
         $isMultiValued = false;
         $readSucceeded = false;
         $exception = null;
         $currentLocale = $locale;
-        $testedLocales = array();
+        $testedLocales = [];
 
         while (null !== $currentLocale) {
             // Resolve any aliases to their target locales
@@ -97,7 +84,7 @@ class BundleEntryReader implements BundleEntryReaderInterface
                 $readSucceeded = true;
 
                 $isCurrentTraversable = $currentEntry instanceof \Traversable;
-                $isCurrentMultiValued = $isCurrentTraversable || is_array($currentEntry);
+                $isCurrentMultiValued = $isCurrentTraversable || \is_array($currentEntry);
 
                 // Return immediately if fallback is disabled or we are dealing
                 // with a scalar non-null entry
@@ -169,7 +156,7 @@ class BundleEntryReader implements BundleEntryReaderInterface
         );
 
         // Append fallback locales, if any
-        if (count($testedLocales) > 1) {
+        if (\count($testedLocales) > 1) {
             // Remove original locale
             array_shift($testedLocales);
 
